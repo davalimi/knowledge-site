@@ -1,0 +1,26 @@
+{
+  "index": {
+    "title": "Accueil",
+    "type": "page"
+  },
+  "networking": {
+    "title": "Networking",
+    "type": "page"
+  },
+  "devops": {
+    "title": "DevOps",
+    "type": "page"
+  },
+  "security": {
+    "title": "Security",
+    "type": "page"
+  },
+  "dev": {
+    "title": "Dev",
+    "type": "page"
+  },
+  "progress": {
+    "title": "Progress",
+    "type": "page"
+  }
+}
