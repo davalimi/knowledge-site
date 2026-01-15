@@ -1,0 +1,381 @@
+# TCP vs UDP
+
+`[DEBUTANT]` - Temps: 30 min lecture + 30 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Chaque fois que tu ouvres un site, envoies un message, ou fais un appel video, tes donnees voyagent via TCP ou UDP. Comprendre la difference = comprendre pourquoi certaines apps sont fiables et d'autres rapides.
+
+---
+
+## What - C'est quoi
+
+### Analogie: La Poste vs Le Crieur public
+
+**TCP = Lettre recommandee avec accuse de reception**
+- Tu envoies une lettre
+- Le facteur fait signer le destinataire
+- Tu recois une confirmation "bien recu"
+- Si perdu, on renvoie
+- C'est SUR mais ca prend du temps
+
+**UDP = Crieur public qui gueule dans la rue**
+- Tu gueules ton message
+- Ceux qui entendent, entendent
+- Ceux qui n'entendent pas, tant pis
+- Pas de confirmation
+- C'est RAPIDE mais pas garanti
+
+---
+
+## Les couches reseau (simplifie)
+
+```
+┌─────────────────────────────────┐
+│  APPLICATION (HTTP, FTP, DNS)   │  ← Ce que tu vois
+├─────────────────────────────────┤
+│  TRANSPORT (TCP ou UDP)         │  ← Ce qu'on apprend ici
+├─────────────────────────────────┤
+│  NETWORK (IP)                   │  ← Adressage
+├─────────────────────────────────┤
+│  LINK (Ethernet, WiFi)          │  ← Physique
+└─────────────────────────────────┘
+```
+
+Quand tu tapes `google.com`:
+1. HTTP prepare la requete (application)
+2. TCP decoupe et numerote les morceaux (transport)
+3. IP ajoute les adresses source/destination (network)
+4. Ca part sur le cable/wifi (link)
+
+---
+
+## TCP - Transmission Control Protocol
+
+### Comment ca marche
+
+**1. Connexion en 3 etapes (Three-way handshake)**
+
+```
+Client                    Server
+   │                         │
+   │──── SYN ───────────────>│  "Hey, tu m'entends?"
+   │                         │
+   │<─── SYN-ACK ────────────│  "Oui, et toi?"
+   │                         │
+   │──── ACK ───────────────>│  "Oui, on est bons!"
+   │                         │
+   │     CONNEXION ETABLIE   │
+```
+
+**2. Envoi des donnees**
+
+```
+Client                    Server
+   │                         │
+   │──── Data (seq=1) ──────>│  "Voici le paquet 1"
+   │                         │
+   │<─── ACK (ack=2) ────────│  "Recu, envoie le 2"
+   │                         │
+   │──── Data (seq=2) ──────>│  "Voici le paquet 2"
+   │                         │
+   │<─── ACK (ack=3) ────────│  "Recu, envoie le 3"
+```
+
+**3. Fermeture**
+
+```
+Client                    Server
+   │                         │
+   │──── FIN ───────────────>│  "J'ai fini"
+   │                         │
+   │<─── ACK ────────────────│  "Ok"
+   │<─── FIN ────────────────│  "Moi aussi"
+   │                         │
+   │──── ACK ───────────────>│  "Ok bye"
+```
+
+### Caracteristiques TCP
+
+| Feature | Description |
+|---------|-------------|
+| Fiable | Chaque paquet est confirme |
+| Ordonne | Les paquets arrivent dans l'ordre |
+| Controle de flux | Ralentit si le receveur est sature |
+| Controle de congestion | Ralentit si le reseau est sature |
+| Connection-based | Handshake avant d'envoyer |
+
+### Ports TCP courants
+
+| Port | Service |
+|------|---------|
+| 22 | SSH |
+| 80 | HTTP |
+| 443 | HTTPS |
+| 3306 | MySQL |
+| 5432 | PostgreSQL |
+| 6379 | Redis |
+
+---
+
+## UDP - User Datagram Protocol
+
+### Comment ca marche
+
+```
+Client                    Server
+   │                         │
+   │──── Data ──────────────>│  "Voila"
+   │──── Data ──────────────>│  "Voila"
+   │──── Data ──────────────>│  "Voila"
+   │                         │
+   │  (pas de confirmation)  │
+```
+
+C'est tout. Pas de handshake. Pas d'ACK. Tu envoies et tu pries.
+
+### Caracteristiques UDP
+
+| Feature | Description |
+|---------|-------------|
+| Rapide | Pas d'attente de confirmation |
+| Pas de garantie | Paquets peuvent etre perdus |
+| Pas d'ordre | Paquets peuvent arriver dans le desordre |
+| Leger | Header de 8 bytes (vs 20+ pour TCP) |
+| Connectionless | Pas de handshake |
+
+### Ports UDP courants
+
+| Port | Service |
+|------|---------|
+| 53 | DNS |
+| 67/68 | DHCP |
+| 123 | NTP (time sync) |
+| 443 | QUIC (HTTP/3) |
+| Variable | VoIP, Gaming, Streaming |
+
+---
+
+## Quand utiliser quoi?
+
+### Utilise TCP quand:
+- **Fiabilite critique** - Transfert de fichiers, emails, web pages
+- **Ordre important** - Donnees qui doivent arriver en sequence
+- **Pas de perte acceptable** - Transactions bancaires, APIs
+
+### Utilise UDP quand:
+- **Vitesse > Fiabilite** - Gaming en ligne, VoIP
+- **Donnees temps reel** - Video streaming, live
+- **Broadcast/Multicast** - Envoyer a plusieurs en meme temps
+- **Petites requetes rapides** - DNS lookups
+
+### Exemples concrets
+
+| Application | Protocole | Pourquoi |
+|-------------|-----------|----------|
+| Site web | TCP | Chaque byte de HTML doit arriver |
+| Netflix | TCP (+ buffer) | Qualite > latence |
+| Zoom/Teams | UDP | Latence faible critique, quelques pixels perdus = ok |
+| Fortnite | UDP | 1 frame perdue vaut mieux que 100ms de lag |
+| Email | TCP | Perdre un caractere = message corrompu |
+| DNS | UDP | Requete rapide, si perdu on recommence |
+
+---
+
+## How - En pratique
+
+### Voir les connexions TCP actives
+
+```bash
+# Linux/Mac
+netstat -an | grep ESTABLISHED
+
+# ou avec ss (plus moderne)
+ss -t state established
+```
+
+### Voir les ports en ecoute
+
+```bash
+# TCP
+ss -tlnp
+
+# UDP
+ss -ulnp
+
+# Les deux
+ss -tulnp
+```
+
+Output exemple:
+```
+State    Local Address:Port    Process
+LISTEN   0.0.0.0:22            sshd
+LISTEN   0.0.0.0:80            nginx
+LISTEN   0.0.0.0:443           nginx
+```
+
+### Tester une connexion TCP
+
+```bash
+# Test si un port TCP est ouvert
+nc -zv google.com 443
+
+# Resultat si ouvert:
+# Connection to google.com 443 port [tcp/https] succeeded!
+
+# Resultat si ferme:
+# nc: connect to google.com port 12345 (tcp) failed: Connection refused
+```
+
+### Capturer du traffic (tcpdump)
+
+```bash
+# Voir le handshake TCP
+sudo tcpdump -i any port 80 -c 10
+
+# Tu verras les flags:
+# S = SYN
+# S. = SYN-ACK
+# . = ACK
+# F = FIN
+# P = PUSH (data)
+```
+
+### Voir les stats TCP
+
+```bash
+# Stats globales
+netstat -s | grep -A 20 "Tcp:"
+
+# Retransmissions (signe de problemes)
+netstat -s | grep retransmit
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Identifier les connexions
+```bash
+# Liste toutes les connexions etablies sur ta machine
+# Trouve combien de connexions TCP sont actives
+# Identifie les ports les plus utilises
+```
+
+### Exercice 2: Scanner des ports
+```bash
+# Utilise nc pour tester ces ports sur google.com:
+# - 80 (HTTP)
+# - 443 (HTTPS)
+# - 22 (SSH)
+# Lesquels sont ouverts? Pourquoi?
+```
+
+### Exercice 3: Observer le handshake
+```bash
+# 1. Ouvre tcpdump sur le port 80
+# 2. Dans un autre terminal, fais: curl http://example.com
+# 3. Identifie les 3 etapes du handshake (SYN, SYN-ACK, ACK)
+```
+
+### Exercice 4: TCP vs UDP
+Reponds:
+1. Pourquoi DNS utilise UDP par defaut?
+2. Pourquoi les jeux en ligne preferent UDP?
+3. Que se passe-t-il si un paquet TCP est perdu?
+4. Que se passe-t-il si un paquet UDP est perdu?
+
+---
+
+## Project - Mini-projet
+
+### Projet: Analyseur de connexions
+
+Cree un script bash qui:
+1. Liste toutes les connexions TCP etablies
+2. Groupe par port de destination
+3. Affiche le top 5 des services les plus connectes
+
+Resultat attendu:
+```
+Top 5 des connexions par port:
+443 (HTTPS): 45 connexions
+80 (HTTP): 12 connexions
+22 (SSH): 3 connexions
+...
+```
+
+Indice: utilise `ss`, `grep`, `sort`, `uniq -c`
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    TCP vs UDP                           │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  TCP (fiable, lent)          UDP (rapide, pas fiable)  │
+│  ─────────────────           ──────────────────────    │
+│  Handshake: oui              Handshake: non            │
+│  Confirmation: oui           Confirmation: non         │
+│  Ordre garanti: oui          Ordre garanti: non        │
+│  Header: 20+ bytes           Header: 8 bytes           │
+│                                                         │
+│  Utilise pour:               Utilise pour:             │
+│  - Web (HTTP/HTTPS)          - DNS                     │
+│  - Email                     - Gaming                  │
+│  - SSH                       - VoIP/Video              │
+│  - Bases de donnees          - Streaming live          │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│  COMMANDES UTILES                                       │
+│                                                         │
+│  ss -tlnp          # ports TCP en ecoute               │
+│  ss -ulnp          # ports UDP en ecoute               │
+│  ss -t state established  # connexions actives         │
+│  nc -zv host port  # test si port ouvert               │
+│  tcpdump -i any port 80   # capture traffic           │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│  PORTS A CONNAITRE                                      │
+│                                                         │
+│  22=SSH  53=DNS  80=HTTP  443=HTTPS                    │
+│  3306=MySQL  5432=PostgreSQL  6379=Redis               │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **Quelle est la difference entre TCP et UDP?**
+   → TCP = fiable, connection-based, avec confirmation. UDP = rapide, connectionless, sans garantie.
+
+2. **Explique le three-way handshake**
+   → SYN (client initie), SYN-ACK (server accepte), ACK (client confirme). Connexion etablie.
+
+3. **Pourquoi les jeux utilisent UDP?**
+   → Latence faible critique. Perdre 1 frame vaut mieux qu'attendre une retransmission TCP.
+
+4. **Comment TCP gere la perte de paquets?**
+   → Timeout + retransmission. Si pas d'ACK recu dans le delai, le paquet est renvoye.
+
+5. **Qu'est-ce qu'un port?**
+   → Numero qui identifie un service sur une machine. Permet a plusieurs apps d'utiliser le reseau simultanement.
+
+---
+
+## Sujets lies
+
+- **Apres**: [HTTP & HTTPS](/networking/http-https) - HTTP tourne sur TCP
+- **Apres**: [Routing](/networking/routing) - Comment les paquets trouvent leur chemin
+
+---
+
+*Temps estime: 30 min lecture + 30 min pratique*

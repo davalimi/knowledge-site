@@ -1,0 +1,531 @@
+# HTTP et HTTPS
+
+`[DEBUTANT]` - Temps: 45 min lecture + 45 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Chaque fois que tu tapes une URL, cliques sur un lien, ou qu'une app fetch des donnees - c'est HTTP. C'est LE protocole du web. Comprendre HTTP = comprendre comment le web fonctionne vraiment.
+
+---
+
+## What - C'est quoi
+
+### Analogie: Le serveur au restaurant
+
+**HTTP = Commander au restaurant**
+- Tu donnes ta commande au serveur (REQUEST)
+- Le serveur va en cuisine (SERVER)
+- Il revient avec ton plat (RESPONSE)
+- Transaction terminee, le serveur t'oublie
+
+**C'est "stateless"** = le serveur ne se souvient pas de toi entre deux commandes. Chaque requete est independante.
+
+**HTTPS = Commander au restaurant... avec un paravent**
+- Meme principe, mais personne autour ne peut voir/entendre ta commande
+- Communication chiffree entre toi et le serveur
+
+---
+
+## Le modele Request/Response
+
+```
+┌─────────────┐                      ┌─────────────┐
+│   CLIENT    │                      │   SERVER    │
+│  (Browser)  │                      │  (Backend)  │
+└─────────────┘                      └─────────────┘
+       │                                    │
+       │──── HTTP REQUEST ─────────────────>│
+       │     GET /users                     │
+       │     Host: api.example.com          │
+       │                                    │
+       │<─── HTTP RESPONSE ─────────────────│
+       │     200 OK                         │
+       │     {"users": [...]}               │
+       │                                    │
+```
+
+---
+
+## HTTP Request - Anatomie
+
+### Structure d'une requete
+
+```http
+GET /api/users?page=1 HTTP/1.1
+Host: api.example.com
+User-Agent: Mozilla/5.0
+Accept: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{"filter": "active"}
+```
+
+**Ligne 1: Request Line**
+- `GET` = Methode (ce que tu veux faire)
+- `/api/users?page=1` = Path + Query string
+- `HTTP/1.1` = Version du protocole
+
+**Headers** (lignes 2-6)
+- Metadata sur la requete
+- `Host`: domaine cible (obligatoire en HTTP/1.1)
+- `User-Agent`: qui fait la requete
+- `Accept`: format de reponse souhaite
+- `Authorization`: credentials
+- `Content-Type`: format du body envoye
+
+**Body** (apres la ligne vide)
+- Donnees envoyees (pour POST, PUT, PATCH)
+- Peut etre JSON, form data, fichier, etc.
+
+---
+
+## Methodes HTTP (Verbes)
+
+| Methode | Usage | Body? | Idempotent? |
+|---------|-------|-------|-------------|
+| GET | Lire des donnees | Non | Oui |
+| POST | Creer une ressource | Oui | Non |
+| PUT | Remplacer une ressource | Oui | Oui |
+| PATCH | Modifier partiellement | Oui | Non |
+| DELETE | Supprimer | Non | Oui |
+| HEAD | GET sans body (headers only) | Non | Oui |
+| OPTIONS | Quelles methodes dispo? | Non | Oui |
+
+**Idempotent** = appeler 10 fois donne le meme resultat qu'appeler 1 fois
+
+### Exemples concrets
+
+```bash
+# GET - Recuperer des users
+curl https://api.example.com/users
+
+# POST - Creer un user
+curl -X POST https://api.example.com/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "David", "email": "david@test.com"}'
+
+# PUT - Remplacer un user entier
+curl -X PUT https://api.example.com/users/123 \
+  -H "Content-Type: application/json" \
+  -d '{"name": "David", "email": "new@test.com", "role": "admin"}'
+
+# PATCH - Modifier juste l'email
+curl -X PATCH https://api.example.com/users/123 \
+  -H "Content-Type: application/json" \
+  -d '{"email": "updated@test.com"}'
+
+# DELETE - Supprimer
+curl -X DELETE https://api.example.com/users/123
+```
+
+---
+
+## HTTP Response - Anatomie
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 234
+Cache-Control: max-age=3600
+Set-Cookie: session=abc123; HttpOnly
+
+{"users": [{"id": 1, "name": "David"}]}
+```
+
+**Ligne 1: Status Line**
+- `HTTP/1.1` = Version
+- `200` = Status code
+- `OK` = Status text
+
+**Headers** = Metadata de la reponse
+
+**Body** = Les donnees
+
+---
+
+## Status Codes - Les codes a connaitre
+
+### 2xx - Succes
+
+| Code | Signification |
+|------|---------------|
+| 200 | OK - Tout s'est bien passe |
+| 201 | Created - Ressource creee (POST) |
+| 204 | No Content - OK mais pas de body (DELETE) |
+
+### 3xx - Redirection
+
+| Code | Signification |
+|------|---------------|
+| 301 | Moved Permanently - URL changee pour toujours |
+| 302 | Found - Redirection temporaire |
+| 304 | Not Modified - Utilise ton cache |
+
+### 4xx - Erreur Client (ta faute)
+
+| Code | Signification |
+|------|---------------|
+| 400 | Bad Request - Requete mal formee |
+| 401 | Unauthorized - Pas authentifie |
+| 403 | Forbidden - Authentifie mais pas autorise |
+| 404 | Not Found - Ressource inexistante |
+| 405 | Method Not Allowed - Mauvais verbe HTTP |
+| 409 | Conflict - Conflit (ex: email deja utilise) |
+| 422 | Unprocessable Entity - Validation echouee |
+| 429 | Too Many Requests - Rate limit atteint |
+
+### 5xx - Erreur Serveur (sa faute)
+
+| Code | Signification |
+|------|---------------|
+| 500 | Internal Server Error - Bug cote serveur |
+| 502 | Bad Gateway - Proxy/LB ne peut pas joindre le backend |
+| 503 | Service Unavailable - Serveur surcharge/maintenance |
+| 504 | Gateway Timeout - Backend trop lent |
+
+---
+
+## Headers importants
+
+### Request Headers
+
+| Header | Usage |
+|--------|-------|
+| `Host` | Domaine cible (obligatoire) |
+| `Authorization` | Token/credentials |
+| `Content-Type` | Format du body envoye |
+| `Accept` | Format de reponse souhaite |
+| `User-Agent` | Identifie le client |
+| `Cookie` | Cookies a envoyer |
+| `Origin` | Pour CORS |
+| `Referer` | D'ou vient la requete |
+
+### Response Headers
+
+| Header | Usage |
+|--------|-------|
+| `Content-Type` | Format du body |
+| `Content-Length` | Taille du body |
+| `Set-Cookie` | Definir un cookie |
+| `Cache-Control` | Instructions de cache |
+| `Location` | URL de redirection (3xx) |
+| `Access-Control-*` | CORS headers |
+
+---
+
+## HTTPS - Le S de Securite
+
+### HTTP vs HTTPS
+
+```
+HTTP:
+Client ──── "password=123456" ────> Server
+           (tout le monde peut lire)
+
+HTTPS:
+Client ──── "x7#kL9$mP2..." ────> Server
+           (chiffre, illisible)
+```
+
+### Comment ca marche (TLS Handshake simplifie)
+
+```
+Client                           Server
+   │                                │
+   │──── ClientHello ──────────────>│  "Salut, je supporte TLS 1.3"
+   │                                │
+   │<─── ServerHello + Cert ────────│  "Ok, voici mon certificat"
+   │                                │
+   │     (Client verifie le cert)   │
+   │                                │
+   │──── Key Exchange ─────────────>│  "Voici ma cle publique"
+   │                                │
+   │<─── Key Exchange ──────────────│  "Voici la mienne"
+   │                                │
+   │     COMMUNICATION CHIFFREE     │
+```
+
+**Le certificat prouve:**
+1. L'identite du serveur (c'est bien google.com)
+2. Signe par une autorite de confiance (CA)
+
+### Ports
+
+- HTTP: Port 80
+- HTTPS: Port 443
+
+---
+
+## How - En pratique
+
+### Inspecter des requetes HTTP
+
+**Avec curl (verbose)**
+```bash
+# Voir toute la transaction
+curl -v https://httpbin.org/get
+
+# Voir juste les headers
+curl -I https://httpbin.org/get
+```
+
+**Avec les DevTools du browser**
+1. F12 → Onglet Network
+2. Recharge la page
+3. Clique sur une requete pour voir details
+
+### Tester des APIs
+
+```bash
+# GET simple
+curl https://jsonplaceholder.typicode.com/posts/1
+
+# POST avec JSON
+curl -X POST https://jsonplaceholder.typicode.com/posts \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Test", "body": "Content", "userId": 1}'
+
+# Avec authentification Bearer
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  https://api.example.com/protected
+
+# Suivre les redirections
+curl -L https://google.com
+
+# Sauvegarder la reponse
+curl -o response.json https://api.example.com/data
+```
+
+### Verifier un certificat SSL
+
+```bash
+# Voir les infos du certificat
+openssl s_client -connect google.com:443 -servername google.com </dev/null 2>/dev/null | openssl x509 -noout -text | head -30
+
+# Version simple - juste les dates
+openssl s_client -connect google.com:443 -servername google.com </dev/null 2>/dev/null | openssl x509 -noout -dates
+
+# Avec curl
+curl -vI https://google.com 2>&1 | grep -A 5 "Server certificate"
+```
+
+### Debugger des problemes HTTPS
+
+```bash
+# Test connexion SSL
+openssl s_client -connect example.com:443
+
+# Ignorer les erreurs de certificat (dev only!)
+curl -k https://self-signed.example.com
+```
+
+---
+
+## CORS - Cross-Origin Resource Sharing
+
+Quand ton frontend (localhost:3000) appelle une API (api.example.com), le browser bloque par defaut = CORS.
+
+```
+┌────────────────────┐     ┌────────────────────┐
+│  Frontend          │     │  API Server        │
+│  localhost:3000    │     │  api.example.com   │
+└────────────────────┘     └────────────────────┘
+         │                          │
+         │── OPTIONS (preflight) ──>│  "Je peux faire POST?"
+         │                          │
+         │<── CORS Headers ─────────│  "Oui, t'es autorise"
+         │                          │
+         │── POST /data ───────────>│  "Voici mes data"
+         │                          │
+         │<── 200 OK ───────────────│
+```
+
+**Headers CORS cote serveur:**
+```http
+Access-Control-Allow-Origin: https://myapp.com
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE
+Access-Control-Allow-Headers: Content-Type, Authorization
+Access-Control-Allow-Credentials: true
+```
+
+---
+
+## HTTP/1.1 vs HTTP/2 vs HTTP/3
+
+| Feature | HTTP/1.1 | HTTP/2 | HTTP/3 |
+|---------|----------|--------|--------|
+| Connexions | 1 requete/connexion | Multiplexing | Multiplexing |
+| Compression | Headers en texte | Headers compresses | Headers compresses |
+| Transport | TCP | TCP | QUIC (UDP) |
+| Adoption | Universel | ~50% sites | ~25% sites |
+
+**HTTP/2 avantages:**
+- Plusieurs requetes sur 1 connexion
+- Server push (envoyer avant que le client demande)
+- Compression des headers
+
+**HTTP/3 avantages:**
+- Base sur QUIC (UDP) = plus rapide
+- Pas de "head-of-line blocking"
+- Meilleur sur connexions instables (mobile)
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Analyser des requetes
+```bash
+# Utilise curl -v pour:
+# 1. Faire un GET sur https://httpbin.org/get
+# 2. Identifier: methode, status code, headers
+# 3. Comparer avec un POST sur https://httpbin.org/post
+```
+
+### Exercice 2: Tester les status codes
+```bash
+# httpbin.org permet de tester tous les status codes:
+curl -v https://httpbin.org/status/404
+curl -v https://httpbin.org/status/500
+curl -v https://httpbin.org/status/301
+
+# Question: que se passe-t-il avec 301?
+```
+
+### Exercice 3: HTTPS Inspection
+```bash
+# 1. Compare HTTP vs HTTPS:
+curl -v http://httpbin.org/get
+curl -v https://httpbin.org/get
+
+# 2. Verifie le certificat d'un site de ton choix
+# 3. Trouve: qui a emis le certificat? quand expire-t-il?
+```
+
+### Exercice 4: Headers
+```bash
+# 1. Fais une requete avec un User-Agent custom
+curl -H "User-Agent: MonApp/1.0" https://httpbin.org/headers
+
+# 2. Envoie un header Authorization
+curl -H "Authorization: Bearer test123" https://httpbin.org/headers
+
+# 3. Observe les headers de reponse de google.com
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: API Tester en Bash
+
+Cree un script `api-test.sh` qui:
+1. Prend une URL en argument
+2. Teste GET, POST, PUT, DELETE
+3. Affiche le status code pour chaque methode
+4. Affiche si HTTPS est valide
+
+Resultat attendu:
+```
+Testing: https://api.example.com
+
+GET    → 200 OK
+POST   → 201 Created
+PUT    → 200 OK
+DELETE → 204 No Content
+
+SSL Certificate: Valid
+Issuer: Let's Encrypt
+Expires: 2025-03-15
+```
+
+Indice: utilise `curl -s -o /dev/null -w "%{http_code}"` pour avoir juste le status code
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    HTTP/HTTPS                                │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  METHODES                                                    │
+│  ────────                                                    │
+│  GET     = Lire           POST   = Creer                    │
+│  PUT     = Remplacer      PATCH  = Modifier                 │
+│  DELETE  = Supprimer      HEAD   = Headers only             │
+│                                                              │
+│  STATUS CODES                                                │
+│  ────────────                                                │
+│  2xx = Succes      200=OK  201=Created  204=No Content      │
+│  3xx = Redirect    301=Permanent  302=Temporary             │
+│  4xx = Ta faute    400=Bad  401=Unauth  403=Forbid  404=NF  │
+│  5xx = Sa faute    500=Error  502=Gateway  503=Unavailable  │
+│                                                              │
+│  HTTP vs HTTPS                                               │
+│  ─────────────                                               │
+│  HTTP  = Port 80   = Pas chiffre  = A eviter               │
+│  HTTPS = Port 443  = Chiffre TLS  = Standard               │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  CURL COMMANDES                                              │
+│                                                              │
+│  curl URL                     # GET simple                  │
+│  curl -X POST URL -d 'data'   # POST avec data             │
+│  curl -H "Header: val" URL    # Header custom              │
+│  curl -v URL                  # Mode verbose               │
+│  curl -I URL                  # Headers only               │
+│  curl -L URL                  # Suivre redirects           │
+│  curl -o file URL             # Sauver dans fichier        │
+│  curl -k URL                  # Ignorer erreurs SSL        │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  HEADERS COURANTS                                            │
+│                                                              │
+│  Content-Type: application/json                             │
+│  Authorization: Bearer TOKEN                                │
+│  Accept: application/json                                   │
+│  User-Agent: MonApp/1.0                                     │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **Quelle est la difference entre HTTP et HTTPS?**
+   → HTTPS = HTTP + TLS. Communication chiffree, certificat verifie, port 443 au lieu de 80.
+
+2. **Explique les methodes GET vs POST**
+   → GET = lire des donnees, pas de body, idempotent, peut etre cache. POST = creer, a un body, pas idempotent.
+
+3. **Que signifie le code 401 vs 403?**
+   → 401 = pas authentifie (token manquant/invalide). 403 = authentifie mais pas autorise (pas les droits).
+
+4. **Qu'est-ce que CORS?**
+   → Mecanisme de securite qui bloque les requetes cross-origin. Le serveur doit explicitement autoriser via headers.
+
+5. **Qu'est-ce qu'une API REST?**
+   → Architecture utilisant HTTP avec: ressources (URLs), methodes (GET/POST/PUT/DELETE), status codes, stateless.
+
+6. **Comment fonctionne le TLS handshake?**
+   → Client Hello → Server Hello + Cert → Verification cert → Echange de cles → Communication chiffree.
+
+7. **Quelle est la difference entre PUT et PATCH?**
+   → PUT = remplace la ressource entiere. PATCH = modifie partiellement.
+
+---
+
+## Sujets lies
+
+- **Avant**: [TCP vs UDP](/networking/tcp-udp) - HTTP tourne sur TCP
+- **Apres**: [DNS](/networking/dns) - Comment les noms deviennent des IPs
+- **Apres**: [Routing](/networking/routing) - Comment les paquets trouvent leur chemin
+
+---
+
+*Temps estime: 45 min lecture + 45 min pratique*

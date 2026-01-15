@@ -1,26 +1,11 @@
 {
   "index": {
-    "title": "Accueil",
-    "type": "page"
+    "title": "Introduction",
+    "type": "page",
+    "display": "hidden"
   },
-  "networking": {
-    "title": "Networking",
-    "type": "page"
-  },
-  "devops": {
-    "title": "DevOps",
-    "type": "page"
-  },
-  "security": {
-    "title": "Security",
-    "type": "page"
-  },
-  "dev": {
-    "title": "Dev",
-    "type": "page"
-  },
-  "progress": {
-    "title": "Progress",
-    "type": "page"
-  }
+  "networking": "Networking",
+  "devops": "DevOps",
+  "security": "Security",
+  "dev": "Development"
 }

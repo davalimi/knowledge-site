@@ -1,0 +1,503 @@
+# DNS - Domain Name System
+
+`[DEBUTANT]` - Temps: 30 min lecture + 30 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Tu tapes `google.com`, pas `142.250.185.46`. DNS fait la traduction. Sans DNS, tu devrais memoriser des centaines d'adresses IP. Comprendre DNS = comprendre pourquoi parfois "le site marche pas" et comment le debugger.
+
+---
+
+## What - C'est quoi
+
+### Analogie: L'annuaire telephonique
+
+**DNS = L'annuaire du web**
+- Tu cherches "Pizza Hut" dans l'annuaire
+- Tu trouves le numero: 01 23 45 67 89
+- Tu appelles ce numero
+
+Pareil pour DNS:
+- Tu tapes `google.com`
+- DNS te dit: `142.250.185.46`
+- Ton browser se connecte a cette IP
+
+**Difference:** L'annuaire est hierarchique et distribue (pas un seul gros livre)
+
+---
+
+## La hierarchie DNS
+
+```
+                    . (root)
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+      .com           .org           .fr
+        │              │              │
+    ┌───┴───┐      ┌───┴───┐     ┌───┴───┐
+ google  amazon  wikipedia    elestio  gouv
+    │                              │
+   www                           api
+```
+
+**Lecture de droite a gauche:**
+`api.elestio.fr.` =
+1. `.` (root)
+2. `fr` (TLD - Top Level Domain)
+3. `elestio` (Domain)
+4. `api` (Subdomain)
+
+---
+
+## Types d'enregistrements DNS
+
+| Type | Usage | Exemple |
+|------|-------|---------|
+| **A** | Nom → IPv4 | `elestio.fr → 1.2.3.4` |
+| **AAAA** | Nom → IPv6 | `elestio.fr → 2001:db8::1` |
+| **CNAME** | Alias vers un autre nom | `www → elestio.fr` |
+| **MX** | Serveur mail | `mail.google.com` |
+| **TXT** | Texte (SPF, DKIM, verification) | `v=spf1 include:...` |
+| **NS** | Serveurs DNS autoritaires | `ns1.provider.com` |
+| **SOA** | Info sur la zone | Serial, refresh, etc. |
+| **PTR** | IP → Nom (reverse DNS) | `4.3.2.1 → elestio.fr` |
+
+### Exemples concrets
+
+```bash
+# Voir les enregistrements A
+dig elestio.fr A +short
+
+# Voir les MX (mail)
+dig elestio.fr MX +short
+
+# Voir tous les enregistrements
+dig elestio.fr ANY
+
+# CNAME - www pointe vers quoi?
+dig www.elestio.fr CNAME +short
+```
+
+---
+
+## Comment fonctionne une requete DNS
+
+```
+┌──────────┐   1. "google.com?"   ┌───────────────┐
+│  Client  │─────────────────────>│ DNS Resolver  │
+│          │                      │ (8.8.8.8)     │
+└──────────┘                      └───────────────┘
+                                         │
+                    ┌────────────────────┴────────────────────┐
+                    │ 2. Pas en cache, je demande aux Root    │
+                    │                                          │
+                    ▼                                          │
+            ┌───────────────┐                                  │
+            │ Root Server   │  3. "Va voir les .com"          │
+            │   (.)         │─────────────────────────────────>│
+            └───────────────┘                                  │
+                                                               │
+            ┌───────────────┐                                  │
+            │ TLD Server    │  4. "Va voir ns.google.com"     │
+            │   (.com)      │─────────────────────────────────>│
+            └───────────────┘                                  │
+                                                               │
+            ┌───────────────┐                                  │
+            │ Authoritative │  5. "google.com = 142.250.x.x"  │
+            │ (google.com)  │─────────────────────────────────>│
+            └───────────────┘                                  │
+                                                               │
+┌──────────┐   6. "142.250.185.46"   ┌───────────────┐        │
+│  Client  │<────────────────────────│ DNS Resolver  │<───────┘
+│          │                         │ (+ cache it)  │
+└──────────┘                         └───────────────┘
+```
+
+**Etapes:**
+1. Client demande au resolver (generalement ton FAI ou 8.8.8.8)
+2. Resolver verifie son cache
+3. Si pas en cache: demande aux Root servers "qui gere .com?"
+4. Root renvoie vers les TLD servers de .com
+5. TLD .com renvoie vers les serveurs autoritaires de google.com
+6. Serveur autoritaire donne l'IP finale
+7. Resolver cache le resultat et repond au client
+
+---
+
+## TTL - Time To Live
+
+Chaque enregistrement a un TTL = combien de temps le garder en cache.
+
+```bash
+dig google.com
+
+;; ANSWER SECTION:
+google.com.     253     IN      A       142.250.185.46
+             ^^^^^^
+             TTL = 253 secondes restantes
+```
+
+**TTL court (60-300s):**
+- Changements frequents
+- Failover rapide
+- Plus de requetes DNS
+
+**TTL long (3600s+):**
+- Moins de requetes
+- Propagation lente si changement
+- Bon pour configs stables
+
+---
+
+## DNS Resolvers populaires
+
+| Provider | IPv4 | IPv6 |
+|----------|------|------|
+| Google | 8.8.8.8, 8.8.4.4 | 2001:4860:4860::8888 |
+| Cloudflare | 1.1.1.1, 1.0.0.1 | 2606:4700:4700::1111 |
+| Quad9 | 9.9.9.9 | 2620:fe::fe |
+| OpenDNS | 208.67.222.222 | - |
+
+**Cloudflare 1.1.1.1** = le plus rapide
+**Quad9** = bloque les domaines malveillants
+**Google 8.8.8.8** = le plus utilise
+
+---
+
+## How - En pratique
+
+### Commandes de base
+
+**dig - L'outil pro**
+```bash
+# Requete simple
+dig google.com
+
+# Juste l'IP
+dig google.com +short
+
+# Specifier le type
+dig google.com MX
+dig google.com TXT
+dig google.com NS
+
+# Utiliser un resolver specifique
+dig @8.8.8.8 google.com
+dig @1.1.1.1 google.com
+
+# Trace complete (voir tout le chemin)
+dig google.com +trace
+
+# Reverse DNS (IP vers nom)
+dig -x 8.8.8.8
+```
+
+**nslookup - L'outil classique**
+```bash
+# Basique
+nslookup google.com
+
+# Avec un serveur specifique
+nslookup google.com 8.8.8.8
+
+# Type specifique
+nslookup -type=MX google.com
+```
+
+**host - Le plus simple**
+```bash
+host google.com
+host -t MX google.com
+```
+
+### Verifier ta config DNS
+
+```bash
+# Quel DNS tu utilises?
+cat /etc/resolv.conf
+
+# Sur systemd-resolved
+resolvectl status
+
+# Test de resolution
+time dig google.com
+```
+
+### Debugger des problemes DNS
+
+```bash
+# Le domaine resout?
+dig example.com +short
+# Si vide = probleme DNS
+
+# Comparer differents resolvers
+dig @8.8.8.8 example.com +short
+dig @1.1.1.1 example.com +short
+# Si different = probleme de propagation
+
+# Verifier la propagation mondiale
+# Utilise: https://dnschecker.org
+
+# Flush le cache DNS local
+# Linux (systemd)
+sudo systemd-resolve --flush-caches
+
+# Mac
+sudo dscacheutil -flushcache
+
+# Windows
+ipconfig /flushdns
+```
+
+### Configurer des enregistrements
+
+Exemple de zone file:
+```
+; Zone file pour elestio.fr
+$TTL 3600
+
+@       IN      SOA     ns1.provider.com. admin.elestio.fr. (
+                        2024010101  ; Serial
+                        7200        ; Refresh
+                        3600        ; Retry
+                        1209600     ; Expire
+                        3600 )      ; Minimum TTL
+
+; Nameservers
+@       IN      NS      ns1.provider.com.
+@       IN      NS      ns2.provider.com.
+
+; A records
+@       IN      A       1.2.3.4
+www     IN      A       1.2.3.4
+api     IN      A       5.6.7.8
+
+; CNAME
+blog    IN      CNAME   www
+
+; MX records
+@       IN      MX  10  mail.elestio.fr.
+@       IN      MX  20  mail2.elestio.fr.
+
+; TXT records (SPF, verification)
+@       IN      TXT     "v=spf1 include:_spf.google.com ~all"
+```
+
+---
+
+## DNS et Securite
+
+### Problemes courants
+
+**DNS Spoofing/Cache Poisoning**
+- Attaquant injecte de faux enregistrements
+- Tu vas sur "google.com" mais c'est un fake
+
+**DNS Hijacking**
+- Ton FAI redirige les requetes DNS
+- Peut censurer ou tracker
+
+### Solutions
+
+**DNSSEC** - Signe cryptographiquement les enregistrements
+```bash
+# Verifier si DNSSEC est active
+dig google.com +dnssec
+```
+
+**DNS over HTTPS (DoH)** - Chiffre les requetes DNS
+- Cloudflare: https://cloudflare-dns.com/dns-query
+- Google: https://dns.google/dns-query
+
+**DNS over TLS (DoT)** - Chiffre via TLS
+- Port 853
+- Supporte par Android 9+
+
+---
+
+## /etc/hosts - Le DNS local
+
+Avant de faire une requete DNS, le systeme check `/etc/hosts`:
+
+```bash
+cat /etc/hosts
+
+# Output:
+127.0.0.1       localhost
+::1             localhost
+192.168.1.100   myserver.local
+```
+
+**Utilisation:**
+- Dev local: `127.0.0.1 myapp.local`
+- Bloquer des sites: `0.0.0.0 facebook.com`
+- Test avant changement DNS
+
+```bash
+# Ajouter une entree
+echo "192.168.1.50 devserver.local" | sudo tee -a /etc/hosts
+
+# Tester
+ping devserver.local
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Decouvrir les enregistrements
+```bash
+# Pour un domaine de ton choix:
+# 1. Trouve l'adresse IP (A record)
+# 2. Trouve les serveurs mail (MX)
+# 3. Trouve les nameservers (NS)
+# 4. Trouve les TXT records (souvent SPF/DKIM)
+```
+
+### Exercice 2: Comparer les resolvers
+```bash
+# Compare le temps de reponse:
+time dig @8.8.8.8 google.com +short
+time dig @1.1.1.1 google.com +short
+time dig @9.9.9.9 google.com +short
+
+# Lequel est le plus rapide chez toi?
+```
+
+### Exercice 3: Tracer une requete
+```bash
+# Utilise +trace pour voir tout le chemin:
+dig google.com +trace
+
+# Identifie:
+# 1. Les root servers contactes
+# 2. Les TLD servers
+# 3. Les serveurs autoritaires
+```
+
+### Exercice 4: DNS local
+```bash
+# 1. Ajoute une entree dans /etc/hosts
+# 2. Verifie que ca marche avec ping
+# 3. Supprime l'entree apres
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: DNS Health Checker
+
+Cree un script `dns-check.sh` qui pour un domaine donne:
+1. Affiche l'IP (A record)
+2. Affiche les MX records
+3. Verifie si le domaine resout sur plusieurs DNS (8.8.8.8, 1.1.1.1)
+4. Affiche le TTL restant
+5. Check si DNSSEC est active
+
+Resultat attendu:
+```
+DNS Health Check for: elestio.fr
+================================
+
+A Record:     1.2.3.4
+TTL:          3542 seconds
+
+MX Records:
+  10 mail.elestio.fr
+  20 mail2.elestio.fr
+
+Resolution Check:
+  Google (8.8.8.8):    1.2.3.4 ✓
+  Cloudflare (1.1.1.1): 1.2.3.4 ✓
+  Quad9 (9.9.9.9):     1.2.3.4 ✓
+
+DNSSEC: Enabled ✓
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         DNS                                  │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  RECORD TYPES                                                │
+│  ────────────                                                │
+│  A     = Nom → IPv4          AAAA  = Nom → IPv6            │
+│  CNAME = Alias               MX    = Mail server           │
+│  TXT   = Texte (SPF,DKIM)    NS    = Nameserver            │
+│  PTR   = Reverse (IP→Nom)    SOA   = Zone info             │
+│                                                              │
+│  RESOLVERS POPULAIRES                                        │
+│  ────────────────────                                        │
+│  Google:     8.8.8.8    Cloudflare: 1.1.1.1                │
+│  Quad9:      9.9.9.9    OpenDNS:    208.67.222.222         │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  COMMANDES DIG                                               │
+│                                                              │
+│  dig domain.com            # Requete complete              │
+│  dig domain.com +short     # Juste l'IP                    │
+│  dig domain.com MX         # Records MX                    │
+│  dig domain.com TXT        # Records TXT                   │
+│  dig @8.8.8.8 domain.com   # Utiliser un DNS specifique   │
+│  dig domain.com +trace     # Voir tout le chemin          │
+│  dig -x 8.8.8.8            # Reverse DNS                  │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  FLUSH DNS CACHE                                             │
+│                                                              │
+│  Linux:   systemd-resolve --flush-caches                    │
+│  Mac:     sudo dscacheutil -flushcache                      │
+│  Windows: ipconfig /flushdns                                │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  FICHIERS IMPORTANTS                                         │
+│                                                              │
+│  /etc/resolv.conf   # Config DNS                           │
+│  /etc/hosts         # DNS local (prioritaire)              │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **Qu'est-ce que le DNS?**
+   → Systeme qui traduit les noms de domaine en adresses IP. Hierarchique et distribue.
+
+2. **Quelle est la difference entre A et CNAME?**
+   → A = pointe directement vers une IP. CNAME = alias vers un autre nom de domaine.
+
+3. **Comment fonctionne une requete DNS?**
+   → Client → Resolver → Root → TLD → Authoritative → Reponse cached et renvoyee.
+
+4. **Qu'est-ce que le TTL?**
+   → Time To Live. Duree pendant laquelle un enregistrement peut etre cache avant de re-query.
+
+5. **Pourquoi les changements DNS prennent du temps?**
+   → A cause du cache. Chaque resolver garde l'ancienne valeur jusqu'a expiration du TTL.
+
+6. **Qu'est-ce que DNSSEC?**
+   → Extension qui signe cryptographiquement les enregistrements DNS pour prevenir le spoofing.
+
+7. **Quelle est la difference entre DNS over HTTPS et DNS over TLS?**
+   → Les deux chiffrent les requetes DNS. DoH utilise HTTPS (port 443), DoT utilise TLS (port 853).
+
+---
+
+## Sujets lies
+
+- **Avant**: [HTTP & HTTPS](/networking/http-https) - DNS resout les noms pour HTTP
+- **Apres**: [Routing](/networking/routing) - Comment les paquets trouvent leur chemin
+
+---
+
+*Temps estime: 30 min lecture + 30 min pratique*

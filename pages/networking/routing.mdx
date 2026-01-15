@@ -1,0 +1,486 @@
+# Routing - Comment les paquets trouvent leur chemin
+
+`[DEBUTANT]` - Temps: 35 min lecture + 30 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Quand tu envoies un message de Paris a Tokyo, il passe par des dizaines de routeurs. Comprendre le routing = comprendre pourquoi certaines connexions sont lentes, comment debugger des problemes reseau, et comment ton infra communique.
+
+---
+
+## What - C'est quoi
+
+### Analogie: Le GPS de la route
+
+**Routing = GPS pour les paquets reseau**
+- Tu veux aller de Paris a Tokyo
+- Le GPS calcule le meilleur chemin
+- A chaque intersection, il te dit ou tourner
+- Si une route est bloquee, il recalcule
+
+**Un routeur** = un panneau directionnel intelligent
+- "Pour aller au reseau 192.168.1.0 → prends cette sortie"
+- "Pour aller au reseau 10.0.0.0 → prends l'autre"
+- "Pour tout le reste → va vers Internet"
+
+---
+
+## Concepts de base
+
+### Adresse IP et sous-reseau
+
+```
+IP:        192.168.1.50
+Masque:    255.255.255.0  (ou /24)
+
+Reseau:    192.168.1.0    (les 3 premiers octets)
+Host:      .50            (le dernier octet)
+```
+
+**CIDR notation:**
+- `/24` = 255.255.255.0 = 256 adresses (254 utilisables)
+- `/16` = 255.255.0.0 = 65,536 adresses
+- `/8` = 255.0.0.0 = 16,777,216 adresses
+
+### Reseaux prives (RFC 1918)
+
+| Plage | CIDR | Usage typique |
+|-------|------|---------------|
+| 10.0.0.0 - 10.255.255.255 | 10.0.0.0/8 | Grandes entreprises, cloud |
+| 172.16.0.0 - 172.31.255.255 | 172.16.0.0/12 | Moyennes entreprises |
+| 192.168.0.0 - 192.168.255.255 | 192.168.0.0/16 | Maisons, petites entreprises |
+
+Ces IPs ne sont pas routables sur Internet = restent locales.
+
+---
+
+## La table de routage
+
+Chaque machine a une table de routage = "pour aller la, passe par la".
+
+```bash
+# Voir ta table de routage
+ip route
+# ou
+route -n
+# ou
+netstat -rn
+```
+
+**Output exemple:**
+```
+Destination     Gateway         Genmask         Flags   Iface
+0.0.0.0         192.168.1.1     0.0.0.0         UG      eth0
+192.168.1.0     0.0.0.0         255.255.255.0   U       eth0
+172.17.0.0      0.0.0.0         255.255.0.0     U       docker0
+```
+
+**Lecture:**
+- `0.0.0.0` = default route (tout le reste) → va vers `192.168.1.1` (ta box)
+- `192.168.1.0/24` = reseau local → directement accessible (gateway 0.0.0.0)
+- `172.17.0.0/16` = reseau Docker → accessible via interface docker0
+
+---
+
+## Comment un paquet trouve son chemin
+
+```
+┌────────────┐
+│ Mon PC     │  Destination: 8.8.8.8 (Google DNS)
+│192.168.1.50│
+└────────────┘
+      │
+      │ 1. Check: 8.8.8.8 est dans 192.168.1.0/24? Non
+      │    Check: 8.8.8.8 match une route specifique? Non
+      │    → Utilise default route (0.0.0.0) → 192.168.1.1
+      ▼
+┌────────────┐
+│ Ma Box     │
+│192.168.1.1 │
+└────────────┘
+      │
+      │ 2. Check ses routes, trouve la meilleure
+      │    → Envoie vers le routeur du FAI
+      ▼
+┌────────────┐
+│ Routeur FAI│
+└────────────┘
+      │
+      │ 3. Et ainsi de suite...
+      │    Chaque routeur fait le meme calcul
+      ▼
+     ...
+      │
+      ▼
+┌────────────┐
+│ Google DNS │
+│  8.8.8.8   │
+└────────────┘
+```
+
+**Regle de matching: la route la plus specifique gagne**
+- `/32` (1 IP) > `/24` (256 IPs) > `/16` > `/8` > `/0` (default)
+
+---
+
+## Gateway vs Route directe
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│  ┌──────┐         ┌──────┐         ┌──────┐           │
+│  │ PC A │─────────│Router│─────────│ PC B │           │
+│  │.1.50 │         │ .1.1 │         │.2.50 │           │
+│  └──────┘         └──────┘         └──────┘           │
+│     │                │                │                │
+│  192.168.1.0/24     │           192.168.2.0/24       │
+│                      │                                 │
+└─────────────────────────────────────────────────────────┘
+
+Sur PC A:
+- Pour joindre 192.168.1.100 → route directe (meme reseau)
+- Pour joindre 192.168.2.50  → via gateway 192.168.1.1
+```
+
+**Route directe** = destination sur le meme reseau physique
+**Gateway** = "porte de sortie" vers d'autres reseaux
+
+---
+
+## Types de routing
+
+### Static Routing
+- Routes configurees manuellement
+- Simple, previsible
+- Pas de mise a jour automatique
+
+```bash
+# Ajouter une route statique
+sudo ip route add 10.0.0.0/8 via 192.168.1.1
+
+# Supprimer
+sudo ip route del 10.0.0.0/8
+```
+
+### Dynamic Routing
+- Routes apprises automatiquement
+- Protocoles: OSPF, BGP, RIP
+- S'adapte aux changements
+
+**BGP (Border Gateway Protocol)** = le protocole d'Internet
+- Utilise entre les FAI et grandes entreprises
+- Chaque "AS" (Autonomous System) annonce ses routes
+
+---
+
+## NAT - Network Address Translation
+
+**Probleme:** Tu as 1 IP publique mais 10 devices chez toi.
+
+**Solution:** NAT traduit les IPs privees en IP publique.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Reseau prive                    │      Internet       │
+│                                  │                     │
+│  PC1: 192.168.1.50 ─┐            │                     │
+│  PC2: 192.168.1.51 ─┼─► Router ──┼──► IP publique      │
+│  PC3: 192.168.1.52 ─┘   (NAT)    │    203.0.113.5     │
+│                                  │                     │
+└─────────────────────────────────────────────────────────┘
+
+Requete sortante:
+  PC1 (192.168.1.50:12345) → Google
+  Router traduit: 203.0.113.5:54321 → Google
+
+Reponse:
+  Google → 203.0.113.5:54321
+  Router traduit: → 192.168.1.50:12345
+```
+
+**Types de NAT:**
+- **SNAT** (Source NAT): Change l'IP source (sortant)
+- **DNAT** (Destination NAT): Change l'IP destination (entrant)
+- **PAT** (Port Address Translation): NAT + ports
+
+---
+
+## How - En pratique
+
+### Voir et modifier les routes
+
+```bash
+# Afficher les routes
+ip route show
+ip route list
+
+# Afficher avec plus de details
+ip route show table all
+
+# Ajouter une route
+sudo ip route add 10.10.0.0/16 via 192.168.1.1
+sudo ip route add 10.10.0.0/16 via 192.168.1.1 dev eth0
+
+# Ajouter une route par defaut
+sudo ip route add default via 192.168.1.1
+
+# Supprimer une route
+sudo ip route del 10.10.0.0/16
+
+# Changer la route par defaut
+sudo ip route replace default via 192.168.1.254
+```
+
+### Tracer le chemin d'un paquet
+
+```bash
+# traceroute - voir chaque saut
+traceroute google.com
+
+# mtr - traceroute en temps reel (meilleur)
+mtr google.com
+
+# Version avec IP seulement
+traceroute -n google.com
+```
+
+**Output traceroute:**
+```
+traceroute to google.com (142.250.185.46), 30 hops max
+ 1  192.168.1.1 (192.168.1.1)  1.234 ms
+ 2  10.0.0.1 (10.0.0.1)  5.678 ms
+ 3  72.14.215.85 (72.14.215.85)  10.123 ms
+ 4  * * *                              ← pas de reponse (firewall)
+ 5  142.250.185.46 (142.250.185.46)  15.456 ms
+```
+
+### Diagnostiquer des problemes
+
+```bash
+# Ping - teste la connectivite
+ping -c 4 google.com
+
+# Test si le probleme est DNS ou reseau
+ping 8.8.8.8        # Si ca marche = DNS problem
+ping google.com     # Si ca marche pas = reseau ok, DNS ko
+
+# Voir par ou passe le traffic
+traceroute google.com
+
+# Test avec MTR (plus complet)
+mtr --report google.com
+```
+
+### Verifier le NAT
+
+```bash
+# Voir ta NAT table (si tu as acces au routeur)
+sudo iptables -t nat -L -n -v
+
+# Voir ton IP publique
+curl ifconfig.me
+curl ipinfo.io/ip
+
+# Comparer avec ton IP locale
+ip addr show
+```
+
+---
+
+## Subnetting - Decouper un reseau
+
+### Pourquoi subnetter?
+- Isoler des departements
+- Limiter le broadcast
+- Securite (ACLs par subnet)
+
+### Calcul rapide
+
+```
+/24 = 256 IPs (254 utilisables)
+/25 = 128 IPs (126 utilisables)
+/26 = 64 IPs  (62 utilisables)
+/27 = 32 IPs  (30 utilisables)
+/28 = 16 IPs  (14 utilisables)
+/29 = 8 IPs   (6 utilisables)
+/30 = 4 IPs   (2 utilisables) - point-to-point
+/32 = 1 IP    - host route
+```
+
+**Exemple:** Decouper 192.168.1.0/24 en 4 subnets:
+```
+192.168.1.0/26   → 192.168.1.0   - 192.168.1.63   (64 IPs)
+192.168.1.64/26  → 192.168.1.64  - 192.168.1.127  (64 IPs)
+192.168.1.128/26 → 192.168.1.128 - 192.168.1.191  (64 IPs)
+192.168.1.192/26 → 192.168.1.192 - 192.168.1.255  (64 IPs)
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Explorer ta table de routage
+```bash
+# 1. Affiche ta table de routage
+ip route
+
+# 2. Identifie:
+#    - Ta route par defaut (gateway)
+#    - Tes reseaux locaux
+#    - L'interface utilisee pour chaque route
+```
+
+### Exercice 2: Tracer des routes
+```bash
+# 1. Trace le chemin vers google.com
+traceroute google.com
+
+# 2. Compte combien de sauts
+# 3. Identifie ou se trouve le plus gros delai
+# 4. Compare avec un autre site (netflix.com)
+```
+
+### Exercice 3: Subnetting
+```
+Reseau: 10.0.0.0/8
+Tu dois creer 4 subnets pour:
+- Developpement (500 machines)
+- Production (2000 machines)
+- Management (50 machines)
+- DMZ (20 machines)
+
+Question: Quels CIDR utiliser pour chaque subnet?
+```
+
+### Exercice 4: Diagnostique
+```bash
+# Scenario: un site ne repond pas
+# 1. Teste si c'est un probleme DNS
+ping 8.8.8.8
+
+# 2. Teste si le DNS fonctionne
+dig site.com
+
+# 3. Trace la route
+traceroute site.com
+
+# 4. Analyse: ou est le probleme?
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Network Diagnostic Tool
+
+Cree un script `netdiag.sh` qui prend une destination et:
+1. Ping pour tester la connectivite
+2. Verifie la resolution DNS
+3. Trace la route
+4. Affiche les stats (latence moyenne, packet loss)
+5. Identifie les problemes potentiels
+
+Resultat attendu:
+```
+Network Diagnostic for: google.com
+===================================
+
+[DNS] Resolution: google.com → 142.250.185.46 ✓
+
+[PING] Connectivity Test:
+  Packets: 4 sent, 4 received, 0% loss
+  Latency: min=10ms avg=15ms max=25ms ✓
+
+[ROUTE] Path Analysis:
+  Hops: 12
+  Slowest hop: hop 5 (45ms) - isp-router.example.com
+
+[DIAGNOSIS]
+  Status: Network OK
+  Note: Slight latency at ISP level (hop 5)
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      ROUTING                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  CIDR RAPIDE                                                 │
+│  ───────────                                                 │
+│  /24 = 256 IPs    /25 = 128    /26 = 64    /27 = 32        │
+│  /28 = 16 IPs     /29 = 8      /30 = 4     /32 = 1         │
+│                                                              │
+│  RESEAUX PRIVES                                              │
+│  ──────────────                                              │
+│  10.0.0.0/8       172.16.0.0/12       192.168.0.0/16       │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  COMMANDES                                                   │
+│                                                              │
+│  ip route                    # Voir les routes             │
+│  ip route add X via Y        # Ajouter une route           │
+│  ip route del X              # Supprimer                   │
+│  traceroute host             # Tracer le chemin            │
+│  mtr host                    # Traceroute temps reel       │
+│  ping host                   # Test connectivite           │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  TABLE DE ROUTAGE                                            │
+│                                                              │
+│  Destination  Gateway      Interface                        │
+│  0.0.0.0      192.168.1.1  eth0     ← default route        │
+│  192.168.1.0  0.0.0.0      eth0     ← local network        │
+│  10.0.0.0     192.168.1.1  eth0     ← via gateway          │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  NAT TYPES                                                   │
+│                                                              │
+│  SNAT = Source NAT (change IP source, sortant)             │
+│  DNAT = Destination NAT (change IP dest, entrant)          │
+│  PAT  = Port Address Translation                            │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **Qu'est-ce qu'une table de routage?**
+   → Liste de regles qui dit pour chaque destination, par ou envoyer le paquet. Plus specifique = prioritaire.
+
+2. **Quelle est la difference entre route statique et dynamique?**
+   → Statique = configuree manuellement, ne change pas. Dynamique = apprise via protocoles (OSPF, BGP), s'adapte.
+
+3. **Qu'est-ce que le NAT?**
+   → Network Address Translation. Traduit les IPs privees en IP publique pour permettre a plusieurs devices de partager une IP.
+
+4. **Comment fonctionne le subnetting?**
+   → Divise un reseau en sous-reseaux plus petits en utilisant des bits du host pour le network. Ex: /24 → /26 = 4 subnets.
+
+5. **Qu'est-ce que la default gateway?**
+   → L'IP du routeur utilise quand aucune autre route ne match. "Porte de sortie" du reseau local.
+
+6. **Quelle est la difference entre un switch et un routeur?**
+   → Switch = Layer 2, forward par MAC address, meme reseau. Routeur = Layer 3, forward par IP, entre reseaux.
+
+7. **Comment debugger un probleme de routing?**
+   → ping (connectivite), traceroute (chemin), verifier table de routage, verifier firewall.
+
+---
+
+## Sujets lies
+
+- **Avant**: [DNS](/networking/dns) - DNS avant routing pour resoudre les noms
+- **Apres**: Security/firewalls - Filtrer le traffic route
+- **Apres**: Security/vpn - Tunnels et routes virtuelles
+
+---
+
+*Temps estime: 35 min lecture + 30 min pratique*
