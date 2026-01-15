@@ -1,0 +1,764 @@
+# Python Scripting & Automation - Automatiser avec Python
+
+`[INTERMEDIAIRE]` - Temps: 50 min lecture + 40 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Les taches repetitives tuent la productivite. Avec Python tu peux:
+- Automatiser les deployments
+- Gerer l'infra cloud
+- Parser et analyser des logs
+- Interagir avec des APIs
+- Creer des outils CLI
+
+C'est ce qui fait la difference entre un bon et un excellent DevOps.
+
+---
+
+## What - C'est quoi
+
+### Use cases DevOps
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    AUTOMATISATION DEVOPS                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  INFRASTRUCTURE                                              │
+│  ──────────────                                              │
+│  - Provisionner des ressources AWS/GCP                      │
+│  - Gerer des serveurs (start/stop/restart)                  │
+│  - Backup automatise                                        │
+│                                                              │
+│  DEPLOYMENT                                                  │
+│  ──────────                                                  │
+│  - Deployer des applications                                │
+│  - Rolling updates                                          │
+│  - Rollback automatique                                     │
+│                                                              │
+│  MONITORING                                                  │
+│  ──────────                                                  │
+│  - Collecter des metriques                                  │
+│  - Alerting                                                  │
+│  - Parser des logs                                          │
+│                                                              │
+│  INTEGRATION                                                 │
+│  ───────────                                                 │
+│  - Webhooks                                                  │
+│  - APIs REST                                                │
+│  - Orchestration de services                                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Requests - Appels HTTP/API
+
+```python
+import requests
+
+# GET
+response = requests.get("https://api.github.com/users/octocat")
+print(response.status_code)  # 200
+data = response.json()
+print(data["name"])
+
+# GET avec parametres
+response = requests.get(
+    "https://api.example.com/users",
+    params={"page": 1, "limit": 10},
+    headers={"Authorization": "Bearer TOKEN"}
+)
+
+# POST
+response = requests.post(
+    "https://api.example.com/users",
+    json={"name": "John", "email": "john@example.com"},
+    headers={"Content-Type": "application/json"}
+)
+
+# PUT, DELETE, PATCH
+requests.put(url, json=data)
+requests.delete(url)
+requests.patch(url, json=data)
+
+# Gestion d'erreurs
+try:
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()  # Raise si status 4xx/5xx
+except requests.exceptions.Timeout:
+    print("Request timed out")
+except requests.exceptions.HTTPError as e:
+    print(f"HTTP error: {e}")
+except requests.exceptions.RequestException as e:
+    print(f"Request failed: {e}")
+
+# Session (cookies, auth)
+session = requests.Session()
+session.auth = ("user", "password")
+session.headers.update({"Authorization": "Bearer TOKEN"})
+response = session.get("https://api.example.com/data")
+```
+
+### Boto3 - AWS SDK
+
+```python
+import boto3
+
+# Clients
+ec2 = boto3.client("ec2", region_name="eu-west-1")
+s3 = boto3.client("s3")
+iam = boto3.client("iam")
+
+# Resources (plus haut niveau)
+ec2_resource = boto3.resource("ec2")
+s3_resource = boto3.resource("s3")
+
+# === EC2 ===
+# Lister les instances
+response = ec2.describe_instances()
+for reservation in response["Reservations"]:
+    for instance in reservation["Instances"]:
+        print(f"{instance['InstanceId']}: {instance['State']['Name']}")
+
+# Lancer une instance
+response = ec2.run_instances(
+    ImageId="ami-xxxxx",
+    InstanceType="t2.micro",
+    MinCount=1,
+    MaxCount=1,
+    KeyName="my-key",
+    TagSpecifications=[{
+        "ResourceType": "instance",
+        "Tags": [{"Key": "Name", "Value": "my-server"}]
+    }]
+)
+instance_id = response["Instances"][0]["InstanceId"]
+
+# Arreter/Demarrer
+ec2.stop_instances(InstanceIds=[instance_id])
+ec2.start_instances(InstanceIds=[instance_id])
+ec2.terminate_instances(InstanceIds=[instance_id])
+
+# Attendre
+waiter = ec2.get_waiter("instance_running")
+waiter.wait(InstanceIds=[instance_id])
+
+# === S3 ===
+# Lister les buckets
+response = s3.list_buckets()
+for bucket in response["Buckets"]:
+    print(bucket["Name"])
+
+# Upload
+s3.upload_file("local.txt", "my-bucket", "remote.txt")
+s3.upload_fileobj(file_obj, "my-bucket", "remote.txt")
+
+# Download
+s3.download_file("my-bucket", "remote.txt", "local.txt")
+
+# Avec resource
+bucket = s3_resource.Bucket("my-bucket")
+for obj in bucket.objects.all():
+    print(obj.key)
+
+# === IAM ===
+# Lister les users
+response = iam.list_users()
+for user in response["Users"]:
+    print(user["UserName"])
+```
+
+### Fabric - Execution distante
+
+```python
+from fabric import Connection
+
+# Connexion SSH
+conn = Connection(
+    host="192.168.1.10",
+    user="ubuntu",
+    connect_kwargs={"key_filename": "/path/to/key.pem"}
+)
+
+# Executer une commande
+result = conn.run("uptime", hide=True)
+print(result.stdout)
+
+# Avec sudo
+result = conn.sudo("systemctl restart nginx")
+
+# Transfert de fichiers
+conn.put("local_file.txt", "/remote/path/")
+conn.get("/remote/file.txt", "local_file.txt")
+
+# Multiple serveurs
+from fabric import SerialGroup, ThreadingGroup
+
+servers = ["web1", "web2", "web3"]
+group = ThreadingGroup(*servers, user="ubuntu")
+
+results = group.run("hostname")
+for conn, result in results.items():
+    print(f"{conn.host}: {result.stdout}")
+
+# Task
+from fabric import task
+
+@task
+def deploy(c, branch="main"):
+    c.run(f"cd /app && git pull origin {branch}")
+    c.run("cd /app && pip install -r requirements.txt")
+    c.sudo("systemctl restart myapp")
+```
+
+### Paramiko - SSH bas niveau
+
+```python
+import paramiko
+
+# Connexion
+ssh = paramiko.SSHClient()
+ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+ssh.connect(
+    hostname="192.168.1.10",
+    username="ubuntu",
+    key_filename="/path/to/key.pem"
+)
+
+# Executer
+stdin, stdout, stderr = ssh.exec_command("ls -la")
+print(stdout.read().decode())
+
+# SFTP
+sftp = ssh.open_sftp()
+sftp.put("local.txt", "/remote/local.txt")
+sftp.get("/remote/file.txt", "local.txt")
+sftp.close()
+
+ssh.close()
+```
+
+### Click - CLI moderne
+
+```python
+import click
+
+@click.group()
+def cli():
+    """Tool de gestion de serveurs."""
+    pass
+
+@cli.command()
+@click.option("--name", "-n", required=True, help="Nom du serveur")
+@click.option("--type", "-t", default="t2.micro", help="Type d'instance")
+@click.option("--dry-run", is_flag=True, help="Ne pas executer")
+def create(name, type, dry_run):
+    """Creer un nouveau serveur."""
+    click.echo(f"Creating server: {name} ({type})")
+    if dry_run:
+        click.echo("Dry run - not creating")
+        return
+    # ... creation logic
+
+@cli.command()
+@click.argument("server_id")
+@click.option("--force", "-f", is_flag=True, help="Forcer la suppression")
+@click.confirmation_option(prompt="Are you sure?")
+def delete(server_id, force):
+    """Supprimer un serveur."""
+    click.echo(f"Deleting {server_id}")
+
+@cli.command()
+@click.option("--format", "-f", type=click.Choice(["table", "json"]))
+def list(format):
+    """Lister les serveurs."""
+    servers = get_servers()
+
+    if format == "json":
+        click.echo(json.dumps(servers))
+    else:
+        for s in servers:
+            click.echo(f"{s['id']}\t{s['name']}\t{s['status']}")
+
+if __name__ == "__main__":
+    cli()
+```
+
+```bash
+python server.py create --name web-1 --type t3.medium
+python server.py list --format json
+python server.py delete i-12345 --force
+```
+
+### Jinja2 - Templates
+
+```python
+from jinja2 import Template, Environment, FileSystemLoader
+
+# Template simple
+template = Template("Hello {{ name }}!")
+result = template.render(name="DevOps")
+
+# Template depuis fichier
+env = Environment(loader=FileSystemLoader("templates"))
+template = env.get_template("nginx.conf.j2")
+
+config = template.render(
+    server_name="example.com",
+    port=8080,
+    upstream_servers=["10.0.1.1", "10.0.1.2"]
+)
+
+with open("/etc/nginx/nginx.conf", "w") as f:
+    f.write(config)
+```
+
+```jinja
+{# templates/nginx.conf.j2 #}
+upstream backend {
+    {% for server in upstream_servers %}
+    server {{ server }}:{{ port }};
+    {% endfor %}
+}
+
+server {
+    listen 80;
+    server_name {{ server_name }};
+
+    location / {
+        proxy_pass http://backend;
+    }
+}
+```
+
+### Logging
+
+```python
+import logging
+
+# Configuration basique
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+# Utilisation
+logger.debug("Debug info")
+logger.info("Starting deployment")
+logger.warning("Connection slow")
+logger.error("Failed to connect")
+logger.exception("Error with traceback")  # Dans un except
+
+# Configuration avancee
+logger = logging.getLogger("myapp")
+logger.setLevel(logging.DEBUG)
+
+file_handler = logging.FileHandler("myapp.log")
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
+
+logger.addHandler(file_handler)
+```
+
+### Script complet: Deployment
+
+```python
+#!/usr/bin/env python3
+"""
+Script de deployment automatise.
+Usage: python deploy.py --env prod --version 1.2.3
+"""
+
+import argparse
+import logging
+import sys
+from fabric import Connection
+import boto3
+import requests
+
+# Configuration
+SERVERS = {
+    "prod": ["web-1", "web-2", "web-3"],
+    "staging": ["staging-1"]
+}
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+def get_server_ips(environment):
+    """Recupere les IPs des serveurs depuis AWS."""
+    ec2 = boto3.client("ec2")
+    response = ec2.describe_instances(
+        Filters=[
+            {"Name": "tag:Environment", "Values": [environment]},
+            {"Name": "instance-state-name", "Values": ["running"]}
+        ]
+    )
+
+    ips = []
+    for reservation in response["Reservations"]:
+        for instance in reservation["Instances"]:
+            ips.append(instance["PrivateIpAddress"])
+
+    return ips
+
+
+def deploy_to_server(host, version, dry_run=False):
+    """Deploy sur un serveur."""
+    logger.info(f"Deploying v{version} to {host}")
+
+    if dry_run:
+        logger.info("(dry run)")
+        return True
+
+    try:
+        conn = Connection(host, user="deploy")
+
+        # Pull la nouvelle version
+        conn.run(f"cd /app && git fetch && git checkout v{version}")
+
+        # Installer les deps
+        conn.run("cd /app && pip install -r requirements.txt")
+
+        # Restart
+        conn.sudo("systemctl restart myapp")
+
+        # Health check
+        result = conn.run("curl -f http://localhost:8080/health", warn=True)
+        if result.ok:
+            logger.info(f"✓ {host} deployed successfully")
+            return True
+        else:
+            logger.error(f"✗ {host} health check failed")
+            return False
+
+    except Exception as e:
+        logger.error(f"✗ {host} deployment failed: {e}")
+        return False
+
+
+def notify_slack(message, webhook_url):
+    """Envoie une notification Slack."""
+    try:
+        requests.post(webhook_url, json={"text": message})
+    except Exception as e:
+        logger.warning(f"Failed to send Slack notification: {e}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Deploy application")
+    parser.add_argument("--env", "-e", required=True,
+                        choices=["staging", "prod"])
+    parser.add_argument("--version", "-v", required=True,
+                        help="Version to deploy")
+    parser.add_argument("--dry-run", "-n", action="store_true")
+    parser.add_argument("--slack-webhook", help="Slack webhook URL")
+
+    args = parser.parse_args()
+
+    logger.info(f"Starting deployment: env={args.env}, version={args.version}")
+
+    # Recuperer les serveurs
+    servers = get_server_ips(args.env)
+    if not servers:
+        logger.error("No servers found")
+        sys.exit(1)
+
+    logger.info(f"Found {len(servers)} servers")
+
+    # Deployer
+    results = []
+    for server in servers:
+        success = deploy_to_server(server, args.version, args.dry_run)
+        results.append((server, success))
+
+    # Resume
+    success_count = sum(1 for _, s in results if s)
+    total = len(results)
+
+    message = f"Deployment v{args.version} to {args.env}: {success_count}/{total} servers"
+    logger.info(message)
+
+    if args.slack_webhook:
+        emoji = "✅" if success_count == total else "⚠️"
+        notify_slack(f"{emoji} {message}", args.slack_webhook)
+
+    if success_count < total:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### Script: Log Parser
+
+```python
+#!/usr/bin/env python3
+"""Parse et analyse des logs nginx."""
+
+import re
+from collections import Counter
+from datetime import datetime
+import argparse
+
+LOG_PATTERN = re.compile(
+    r'(?P<ip>\d+\.\d+\.\d+\.\d+) - - '
+    r'\[(?P<timestamp>[^\]]+)\] '
+    r'"(?P<method>\w+) (?P<path>[^\s]+) [^"]*" '
+    r'(?P<status>\d+) (?P<size>\d+)'
+)
+
+
+def parse_log_line(line):
+    """Parse une ligne de log."""
+    match = LOG_PATTERN.match(line)
+    if match:
+        return match.groupdict()
+    return None
+
+
+def analyze_logs(filename, top_n=10):
+    """Analyse un fichier de logs."""
+    stats = {
+        "total": 0,
+        "status_codes": Counter(),
+        "paths": Counter(),
+        "ips": Counter(),
+        "errors": 0
+    }
+
+    with open(filename) as f:
+        for line in f:
+            parsed = parse_log_line(line)
+            if not parsed:
+                continue
+
+            stats["total"] += 1
+            stats["status_codes"][parsed["status"]] += 1
+            stats["paths"][parsed["path"]] += 1
+            stats["ips"][parsed["ip"]] += 1
+
+            if parsed["status"].startswith(("4", "5")):
+                stats["errors"] += 1
+
+    return stats
+
+
+def print_report(stats, top_n=10):
+    """Affiche le rapport."""
+    print(f"\n{'='*50}")
+    print(f"Log Analysis Report")
+    print(f"{'='*50}\n")
+
+    print(f"Total requests: {stats['total']}")
+    print(f"Errors (4xx/5xx): {stats['errors']} ({100*stats['errors']/stats['total']:.1f}%)")
+
+    print(f"\nTop {top_n} Status Codes:")
+    for code, count in stats["status_codes"].most_common(top_n):
+        print(f"  {code}: {count}")
+
+    print(f"\nTop {top_n} Paths:")
+    for path, count in stats["paths"].most_common(top_n):
+        print(f"  {path}: {count}")
+
+    print(f"\nTop {top_n} IPs:")
+    for ip, count in stats["ips"].most_common(top_n):
+        print(f"  {ip}: {count}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("logfile", help="Log file to analyze")
+    parser.add_argument("--top", "-n", type=int, default=10)
+    args = parser.parse_args()
+
+    stats = analyze_logs(args.logfile, args.top)
+    print_report(stats, args.top)
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: API Client
+
+```python
+#!/usr/bin/env python3
+"""Client pour une API REST."""
+
+import requests
+import json
+
+class APIClient:
+    def __init__(self, base_url, token=None):
+        self.base_url = base_url.rstrip("/")
+        self.session = requests.Session()
+        if token:
+            self.session.headers["Authorization"] = f"Bearer {token}"
+
+    def get(self, endpoint, **kwargs):
+        return self._request("GET", endpoint, **kwargs)
+
+    def post(self, endpoint, **kwargs):
+        return self._request("POST", endpoint, **kwargs)
+
+    def _request(self, method, endpoint, **kwargs):
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        response = self.session.request(method, url, **kwargs)
+        response.raise_for_status()
+        return response.json()
+
+# Test
+if __name__ == "__main__":
+    client = APIClient("https://jsonplaceholder.typicode.com")
+    users = client.get("/users")
+    print(f"Found {len(users)} users")
+```
+
+### Exercice 2: Health Checker
+
+```python
+#!/usr/bin/env python3
+"""Verifie la sante des services."""
+
+import requests
+import concurrent.futures
+import time
+
+SERVICES = [
+    {"name": "web", "url": "http://localhost:8080/health"},
+    {"name": "api", "url": "http://localhost:3000/health"},
+    {"name": "db", "url": "http://localhost:5432/health"},
+]
+
+def check_health(service):
+    """Verifie un service."""
+    try:
+        start = time.time()
+        response = requests.get(service["url"], timeout=5)
+        latency = (time.time() - start) * 1000
+
+        return {
+            "name": service["name"],
+            "status": "healthy" if response.ok else "unhealthy",
+            "latency_ms": round(latency, 2),
+            "code": response.status_code
+        }
+    except Exception as e:
+        return {
+            "name": service["name"],
+            "status": "down",
+            "error": str(e)
+        }
+
+def main():
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(check_health, SERVICES))
+
+    for r in results:
+        status = "✓" if r["status"] == "healthy" else "✗"
+        print(f"{status} {r['name']}: {r['status']}")
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PYTHON AUTOMATION                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  REQUESTS                                                    │
+│  ────────                                                    │
+│  requests.get(url, params={}, headers={})                   │
+│  requests.post(url, json={}, data={})                       │
+│  response.json(), response.text, response.status_code       │
+│                                                              │
+│  BOTO3 (AWS)                                                 │
+│  ──────────                                                  │
+│  ec2 = boto3.client("ec2")                                  │
+│  s3 = boto3.resource("s3")                                  │
+│  ec2.describe_instances()                                   │
+│  s3.upload_file("local", "bucket", "key")                   │
+│                                                              │
+│  FABRIC (SSH)                                                │
+│  ────────────                                                │
+│  conn = Connection(host, user=user)                         │
+│  conn.run("command")                                        │
+│  conn.sudo("command")                                       │
+│  conn.put("local", "remote")                                │
+│                                                              │
+│  CLICK (CLI)                                                 │
+│  ──────────                                                  │
+│  @click.command()                                           │
+│  @click.option("--name", "-n", required=True)               │
+│  @click.argument("file")                                    │
+│                                                              │
+│  JINJA2 (Templates)                                          │
+│  ──────────────────                                          │
+│  template = env.get_template("file.j2")                     │
+│  result = template.render(var=value)                        │
+│                                                              │
+│  LOGGING                                                     │
+│  ───────                                                     │
+│  logging.basicConfig(level=logging.INFO)                    │
+│  logger.info(), logger.error(), logger.exception()          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **Comment automatiser des taches AWS avec Python?**
+   → Boto3, le SDK officiel. Clients pour chaque service (ec2, s3, iam...).
+
+2. **Difference entre Fabric et Paramiko?**
+   → Paramiko: SSH bas niveau. Fabric: haut niveau, plus simple, basé sur Paramiko.
+
+3. **Comment gerer les erreurs dans les scripts?**
+   → Try/except, logging, exit codes appropriés, retry logic pour les erreurs transitoires.
+
+4. **C'est quoi Jinja2?**
+   → Moteur de templates Python. Genere des fichiers de config, emails, etc. Utilisé par Ansible.
+
+5. **Comment faire des appels API en parallele?**
+   → concurrent.futures (ThreadPoolExecutor, ProcessPoolExecutor), asyncio, ou multiprocessing.
+
+6. **Comment structurer un CLI en Python?**
+   → argparse (standard) ou Click (plus moderne). Sous-commandes, options, arguments.
+
+---
+
+## Sujets lies
+
+- **Avant:** [Python Basics](/devops/python) - Les fondamentaux
+- **Lie:** [AWS](/devops/aws) - Automatiser l'infra cloud
+- **Lie:** [Ansible](/devops/ansible) - Configuration management
+
+---
+
+*Temps estime: 50 min lecture + 40 min pratique*

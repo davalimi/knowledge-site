@@ -1,0 +1,498 @@
+# VPN - Ton tunnel prive sur Internet
+
+`[DEBUTANT]` - Temps: 35 min lecture + 25 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Un VPN cree un tunnel chiffre entre deux points sur Internet. C'est comme avoir un cable prive qui traverse le monde.
+
+**Use cases DevOps:**
+- Acceder aux serveurs internes depuis chez toi
+- Connecter deux datacenters securises
+- Donner acces aux devs sans exposer les serveurs sur Internet
+- Isoler des environnements (dev/staging/prod)
+
+---
+
+## What - C'est quoi
+
+### Analogie: Le tunnel sous la montagne
+
+Imagine que tu veux aller de la ville A a la ville B, mais il y a une montagne au milieu (Internet hostile).
+
+**Sans VPN:** Tu passes par-dessus la montagne, tout le monde te voit, tu peux te faire attaquer.
+
+**Avec VPN:** Tu prends un tunnel prive sous la montagne. Personne ne te voit, tu arrives directement de l'autre cote.
+
+### Comment ca marche
+
+```
+┌─────────┐                                    ┌─────────┐
+│ Client  │                                    │ Serveur │
+│         │                                    │  VPN    │
+│ 192.168.│                                    │         │
+│  1.100  │                                    │10.8.0.1 │
+└────┬────┘                                    └────┬────┘
+     │                                              │
+     │  Paquet original: 192.168.1.100 → 10.0.0.50 │
+     │                                              │
+     ▼                                              │
+┌─────────────────────────────────────────────────────────┐
+│                    TUNNEL VPN                            │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │  IP externe: Client IP → VPN Server IP          │    │
+│  │  ┌─────────────────────────────────────────┐    │    │
+│  │  │  CHIFFRE: Paquet original encapsule     │    │    │
+│  │  │  192.168.1.100 → 10.0.0.50 (invisible)  │    │    │
+│  │  └─────────────────────────────────────────┘    │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+     │                                              │
+     └──────────── INTERNET ───────────────────────┘
+```
+
+### Types de VPN
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| **Site-to-Site** | Connecte deux reseaux | Datacenters, bureaux |
+| **Remote Access** | Un client vers un reseau | Teletravail |
+| **Point-to-Point** | Deux machines directement | Serveurs specifiques |
+
+### Protocoles VPN
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  PROTOCOLES VPN                          │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  WIREGUARD (Moderne, recommande)                        │
+│  ──────────────────────────────                         │
+│  - Ultra rapide et leger                                │
+│  - Code simple (4000 lignes vs 100k pour OpenVPN)       │
+│  - Chiffrement moderne (ChaCha20, Curve25519)           │
+│  - Integre au kernel Linux                              │
+│                                                          │
+│  OPENVPN (Classique, eprouve)                           │
+│  ─────────────────────────────                          │
+│  - Tres configurable                                    │
+│  - Supporte par tout                                    │
+│  - Plus lent que WireGuard                              │
+│  - SSL/TLS based                                        │
+│                                                          │
+│  IPSEC (Enterprise)                                     │
+│  ─────────────────                                      │
+│  - Standard industrie                                   │
+│  - Complexe a configurer                                │
+│  - Utilise pour site-to-site                            │
+│                                                          │
+│  A EVITER                                               │
+│  ────────                                               │
+│  - PPTP (casse, obsolete)                               │
+│  - L2TP seul (pas de chiffrement)                       │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### WireGuard - Setup rapide
+
+#### Installation
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install wireguard
+
+# CentOS/RHEL
+sudo yum install epel-release
+sudo yum install wireguard-tools
+
+# Verifier
+wg --version
+```
+
+#### Serveur VPN
+
+```bash
+# Generer les cles
+wg genkey | tee /etc/wireguard/server_private.key | wg pubkey > /etc/wireguard/server_public.key
+chmod 600 /etc/wireguard/server_private.key
+
+# Voir les cles
+cat /etc/wireguard/server_private.key
+cat /etc/wireguard/server_public.key
+
+# Configuration serveur
+cat > /etc/wireguard/wg0.conf << EOF
+[Interface]
+Address = 10.8.0.1/24
+ListenPort = 51820
+PrivateKey = $(cat /etc/wireguard/server_private.key)
+
+# Activer le forwarding
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+# Client 1
+[Peer]
+PublicKey = CLIENT_PUBLIC_KEY_HERE
+AllowedIPs = 10.8.0.2/32
+EOF
+
+# Activer IP forwarding
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+sysctl -p
+
+# Demarrer WireGuard
+sudo wg-quick up wg0
+
+# Activer au boot
+sudo systemctl enable wg-quick@wg0
+```
+
+#### Client VPN
+
+```bash
+# Generer les cles client
+wg genkey | tee /etc/wireguard/client_private.key | wg pubkey > /etc/wireguard/client_public.key
+
+# Configuration client
+cat > /etc/wireguard/wg0.conf << EOF
+[Interface]
+Address = 10.8.0.2/24
+PrivateKey = $(cat /etc/wireguard/client_private.key)
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = SERVER_PUBLIC_KEY_HERE
+Endpoint = vpn.example.com:51820
+AllowedIPs = 0.0.0.0/0  # Tout le trafic passe par le VPN
+# AllowedIPs = 10.8.0.0/24, 192.168.1.0/24  # Split tunnel
+PersistentKeepalive = 25
+EOF
+
+# Connecter
+sudo wg-quick up wg0
+
+# Deconnecter
+sudo wg-quick down wg0
+```
+
+#### Ajouter un client sur le serveur
+
+```bash
+# Sur le serveur, ajouter le peer
+sudo wg set wg0 peer CLIENT_PUBLIC_KEY allowed-ips 10.8.0.2/32
+
+# Ou editer /etc/wireguard/wg0.conf et restart
+sudo wg-quick down wg0 && sudo wg-quick up wg0
+```
+
+### OpenVPN - Setup basique
+
+#### Installation serveur
+
+```bash
+# Installer
+sudo apt install openvpn easy-rsa
+
+# Setup PKI
+make-cadir ~/openvpn-ca
+cd ~/openvpn-ca
+
+# Initialiser
+./easyrsa init-pki
+./easyrsa build-ca nopass
+./easyrsa gen-req server nopass
+./easyrsa sign-req server server
+./easyrsa gen-dh
+
+# Generer cle TLS
+openvpn --genkey secret ta.key
+```
+
+#### Configuration serveur OpenVPN
+
+```bash
+# /etc/openvpn/server.conf
+port 1194
+proto udp
+dev tun
+
+ca ca.crt
+cert server.crt
+key server.key
+dh dh.pem
+tls-auth ta.key 0
+
+server 10.8.0.0 255.255.255.0
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS 1.1.1.1"
+
+keepalive 10 120
+cipher AES-256-GCM
+user nobody
+group nogroup
+persist-key
+persist-tun
+
+status /var/log/openvpn-status.log
+verb 3
+```
+
+### Verifier le VPN
+
+```bash
+# Status WireGuard
+sudo wg show
+
+# Ping a travers le tunnel
+ping 10.8.0.1
+
+# Verifier ton IP publique
+curl ifconfig.me
+
+# Verifier les routes
+ip route | grep wg0
+```
+
+---
+
+## Split Tunnel vs Full Tunnel
+
+### Full Tunnel (tout passe par le VPN)
+
+```
+AllowedIPs = 0.0.0.0/0
+```
+- Tout le trafic Internet passe par le VPN
+- Plus secure mais plus lent
+- Ta position semble etre celle du serveur VPN
+
+### Split Tunnel (seulement certaines destinations)
+
+```
+AllowedIPs = 10.8.0.0/24, 192.168.1.0/24
+```
+- Seul le trafic vers ces reseaux passe par le VPN
+- Le reste va directement sur Internet
+- Plus rapide, moins de bande passante sur le serveur
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Installer WireGuard
+
+```bash
+# 1. Installer WireGuard
+sudo apt update && sudo apt install wireguard
+
+# 2. Generer une paire de cles
+wg genkey | tee privatekey | wg pubkey > publickey
+
+# 3. Afficher les cles
+echo "Private: $(cat privatekey)"
+echo "Public: $(cat publickey)"
+```
+
+### Exercice 2: Config basique
+
+```bash
+# Creer une config WireGuard simple
+cat > test-wg.conf << 'EOF'
+[Interface]
+PrivateKey = YOUR_PRIVATE_KEY
+Address = 10.8.0.2/24
+
+[Peer]
+PublicKey = SERVER_PUBLIC_KEY
+Endpoint = vpn.example.com:51820
+AllowedIPs = 10.8.0.0/24
+PersistentKeepalive = 25
+EOF
+```
+
+### Exercice 3: Debug VPN
+
+```bash
+# Le VPN ne marche pas - debug steps
+
+# 1. Verifier que WireGuard tourne
+sudo wg show
+
+# 2. Verifier la connectivite au serveur
+nc -zvu vpn.example.com 51820
+
+# 3. Verifier les routes
+ip route
+
+# 4. Tester le tunnel
+ping 10.8.0.1
+
+# 5. Verifier les logs
+sudo dmesg | grep wireguard
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: VPN pour acces aux serveurs internes
+
+**Scenario:** Tu as des serveurs internes (192.168.1.0/24) que tu veux acceder depuis chez toi.
+
+```bash
+# === SERVEUR VPN (sur un serveur avec acces au reseau interne) ===
+
+# 1. Installer WireGuard
+sudo apt install wireguard
+
+# 2. Generer les cles serveur
+cd /etc/wireguard
+wg genkey | tee server.key | wg pubkey > server.pub
+
+# 3. Config serveur
+cat > /etc/wireguard/wg0.conf << EOF
+[Interface]
+Address = 10.8.0.1/24
+ListenPort = 51820
+PrivateKey = $(cat server.key)
+
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A FORWARD -o wg0 -j ACCEPT
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -j ACCEPT
+
+[Peer]
+# Ton laptop
+PublicKey = LAPTOP_PUBLIC_KEY
+AllowedIPs = 10.8.0.2/32
+EOF
+
+# 4. Activer forwarding et demarrer
+echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+sudo wg-quick up wg0
+sudo systemctl enable wg-quick@wg0
+
+# === CLIENT (ton laptop) ===
+
+# 1. Generer les cles
+wg genkey | tee laptop.key | wg pubkey > laptop.pub
+
+# 2. Config client
+cat > /etc/wireguard/wg0.conf << EOF
+[Interface]
+Address = 10.8.0.2/24
+PrivateKey = $(cat laptop.key)
+
+[Peer]
+PublicKey = SERVER_PUBLIC_KEY
+Endpoint = vpn-server.example.com:51820
+AllowedIPs = 10.8.0.0/24, 192.168.1.0/24  # VPN + reseau interne
+PersistentKeepalive = 25
+EOF
+
+# 3. Connecter
+sudo wg-quick up wg0
+
+# 4. Tester
+ping 192.168.1.10  # Serveur interne
+ssh user@192.168.1.10  # SSH vers serveur interne
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         VPN                                  │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  WIREGUARD                                                   │
+│  ─────────                                                   │
+│  wg genkey | tee priv | wg pubkey > pub  # Generer cles     │
+│  wg-quick up wg0                          # Demarrer        │
+│  wg-quick down wg0                        # Arreter         │
+│  wg show                                  # Status          │
+│  systemctl enable wg-quick@wg0            # Auto-start      │
+│                                                              │
+│  CONFIG SERVEUR (/etc/wireguard/wg0.conf)                   │
+│  ────────────────────────────────────────                   │
+│  [Interface]                                                 │
+│  Address = 10.8.0.1/24                                      │
+│  ListenPort = 51820                                         │
+│  PrivateKey = SERVER_PRIVATE_KEY                            │
+│                                                              │
+│  [Peer]                                                      │
+│  PublicKey = CLIENT_PUBLIC_KEY                              │
+│  AllowedIPs = 10.8.0.2/32                                   │
+│                                                              │
+│  CONFIG CLIENT                                               │
+│  ─────────────                                               │
+│  [Interface]                                                 │
+│  Address = 10.8.0.2/24                                      │
+│  PrivateKey = CLIENT_PRIVATE_KEY                            │
+│                                                              │
+│  [Peer]                                                      │
+│  PublicKey = SERVER_PUBLIC_KEY                              │
+│  Endpoint = vpn.example.com:51820                           │
+│  AllowedIPs = 0.0.0.0/0  # Full tunnel                      │
+│  AllowedIPs = 10.8.0.0/24  # Split tunnel                   │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  TUNNELS                                                     │
+│  ───────                                                     │
+│  Full tunnel:  AllowedIPs = 0.0.0.0/0                       │
+│  Split tunnel: AllowedIPs = 10.0.0.0/8, 192.168.0.0/16     │
+│                                                              │
+│  DEBUG                                                       │
+│  ─────                                                       │
+│  wg show                    # Status interfaces             │
+│  ping 10.8.0.1              # Test tunnel                   │
+│  curl ifconfig.me           # Verifier IP publique          │
+│  ip route | grep wg         # Verifier routes               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi un VPN?**
+   → Un tunnel chiffre entre deux points sur Internet. Le trafic est encapsule et invisible pour les observateurs externes.
+
+2. **Difference entre WireGuard et OpenVPN?**
+   → WireGuard est plus moderne, plus rapide, code plus simple. OpenVPN est plus ancien, plus configurable, supporte plus eprouve.
+
+3. **C'est quoi un split tunnel?**
+   → Seul le trafic vers certaines destinations passe par le VPN. Le reste va directement sur Internet. Economise la bande passante.
+
+4. **Pourquoi utiliser un VPN en entreprise?**
+   → Acceder aux ressources internes depuis l'exterieur, connecter des sites distants, chiffrer le trafic sensible.
+
+5. **C'est quoi le port par defaut de WireGuard?**
+   → UDP 51820. OpenVPN utilise UDP 1194 ou TCP 443.
+
+6. **Comment fonctionne l'authentification WireGuard?**
+   → Echange de cles publiques. Chaque peer a une paire de cles (publique/privee). Pas de CA ni certificats.
+
+---
+
+## Sujets lies
+
+- **Avant:** [Firewalls](/networking/firewalls) - Le VPN doit traverser les firewalls
+- **Apres:** [SSH Tunnels](/networking/ssh-tunnels) - Alternative legere au VPN
+- **Lie:** [Routing](/networking/routing) - Le VPN cree des routes virtuelles
+
+---
+
+*Temps estime: 35 min lecture + 25 min pratique*

@@ -1,3 +1,19 @@
 {
-  "index": "Introduction"
+  "index": "Introduction",
+  "01-linux-basics": "Linux Basics",
+  "02-git": "Git",
+  "03-build-tools": "Build Tools",
+  "04-cloud-basics": "Cloud Basics",
+  "05-nexus": "Nexus",
+  "06-docker": "Docker",
+  "07-jenkins": "Jenkins CI/CD",
+  "08-aws": "AWS Services",
+  "09-kubernetes": "Kubernetes",
+  "10-eks": "EKS",
+  "11-terraform": "Terraform",
+  "12-python": "Python Basics",
+  "13-python-automation": "Python Automation",
+  "14-ansible": "Ansible",
+  "15-prometheus": "Prometheus",
+  "16-databases": "Databases"
 }

@@ -1,0 +1,531 @@
+# SSH Tunnels - Le couteau suisse du DevOps
+
+`[DEBUTANT]` - Temps: 30 min lecture + 25 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+SSH tunnels c'est la solution rapide quand:
+- Tu veux acceder a un service qui n'est pas expose sur Internet
+- Tu veux chiffrer du trafic non-securise
+- Tu n'as pas le temps/droit d'installer un VPN
+- Tu veux debugger un service distant comme s'il etait local
+
+C'est l'outil que tu vas utiliser tous les jours en tant que DevOps.
+
+---
+
+## What - C'est quoi
+
+### Analogie: Le passe-muraille
+
+Imagine un mur (firewall) entre toi et un serveur. SSH tunnel c'est comme creuser un passage secret dans le mur. Tu peux faire passer n'importe quoi par ce passage.
+
+### Les 3 types de tunnels
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TYPES DE TUNNELS                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. LOCAL PORT FORWARDING (-L)                              │
+│     "Amene un port distant vers moi"                        │
+│                                                              │
+│     [Laptop:8080] ════SSH════▶ [Server] ──▶ [DB:5432]       │
+│                                                              │
+│     localhost:8080 → database:5432                          │
+│                                                              │
+│  ────────────────────────────────────────────────────────── │
+│                                                              │
+│  2. REMOTE PORT FORWARDING (-R)                             │
+│     "Expose mon port local vers le serveur"                 │
+│                                                              │
+│     [Laptop:3000] ◀════SSH════ [Server:8080]                │
+│                                                              │
+│     server:8080 → localhost:3000                            │
+│                                                              │
+│  ────────────────────────────────────────────────────────── │
+│                                                              │
+│  3. DYNAMIC PORT FORWARDING (-D)                            │
+│     "Proxy SOCKS - tout passe par le serveur"               │
+│                                                              │
+│     [Laptop] ════SOCKS════▶ [Server] ──▶ [Internet]         │
+│                                                              │
+│     Browser → localhost:1080 → server → web                 │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### 1. Local Port Forwarding (-L)
+
+**Use case:** Acceder a une base de donnees qui n'est accessible que depuis le serveur.
+
+```bash
+# Syntaxe
+ssh -L [local_port]:[destination]:[dest_port] [user]@[ssh_server]
+
+# Exemple: Acceder a PostgreSQL sur le serveur
+ssh -L 5432:localhost:5432 user@server.com
+
+# Maintenant sur ton laptop:
+psql -h localhost -p 5432 -U myuser mydb
+```
+
+**Exemple concret:**
+
+```
+┌──────────┐          ┌──────────┐          ┌──────────┐
+│  Laptop  │   SSH    │  Server  │  Local   │ Database │
+│          │─────────▶│          │─────────▶│  :5432   │
+│ :5432 ◀──│          │          │          │          │
+└──────────┘          └──────────┘          └──────────┘
+
+ssh -L 5432:db-server:5432 user@jump-server.com
+
+Resultat: localhost:5432 → db-server:5432
+```
+
+**Variations:**
+
+```bash
+# Port local different
+ssh -L 15432:localhost:5432 user@server.com
+# localhost:15432 → server:5432
+
+# Destination sur un autre serveur
+ssh -L 5432:db.internal:5432 user@server.com
+# localhost:5432 → db.internal:5432 (via server)
+
+# Plusieurs tunnels
+ssh -L 5432:db:5432 -L 6379:redis:6379 user@server.com
+
+# En background (sans shell)
+ssh -fNL 5432:localhost:5432 user@server.com
+# -f: background
+# -N: pas de commande remote
+```
+
+### 2. Remote Port Forwarding (-R)
+
+**Use case:** Exposer ton app locale pour qu'un collegue puisse la tester.
+
+```bash
+# Syntaxe
+ssh -R [remote_port]:[destination]:[dest_port] [user]@[ssh_server]
+
+# Exemple: Exposer ton app locale sur le port 3000
+ssh -R 8080:localhost:3000 user@server.com
+
+# Maintenant accessible sur:
+# http://server.com:8080 → ton localhost:3000
+```
+
+**Exemple concret:**
+
+```
+┌──────────┐          ┌──────────┐          ┌──────────┐
+│  Laptop  │   SSH    │  Server  │  Public  │  Client  │
+│  :3000   │─────────▶│  :8080 ◀─│◀─────────│          │
+│          │          │          │          │          │
+└──────────┘          └──────────┘          └──────────┘
+
+ssh -R 8080:localhost:3000 user@server.com
+
+Resultat: server:8080 → localhost:3000
+```
+
+**Note:** Par defaut, le port remote n'ecoute que sur localhost du serveur. Pour l'exposer publiquement:
+
+```bash
+# Dans /etc/ssh/sshd_config sur le serveur:
+GatewayPorts yes
+
+# Puis redemarrer sshd
+sudo systemctl restart sshd
+```
+
+### 3. Dynamic Port Forwarding (-D)
+
+**Use case:** Utiliser le serveur comme proxy pour tout ton trafic web.
+
+```bash
+# Syntaxe
+ssh -D [local_port] [user]@[ssh_server]
+
+# Exemple
+ssh -D 1080 user@server.com
+
+# Configure ton navigateur pour utiliser:
+# SOCKS5 proxy: localhost:1080
+```
+
+**Configuration Firefox:**
+1. Settings → Network Settings → Manual proxy
+2. SOCKS Host: localhost, Port: 1080
+3. SOCKS v5
+
+**Configuration curl:**
+
+```bash
+curl --socks5 localhost:1080 https://example.com
+```
+
+---
+
+## Options utiles
+
+```bash
+# En arriere-plan sans terminal
+ssh -fN -L 5432:localhost:5432 user@server.com
+
+# Garder la connexion vivante
+ssh -o ServerAliveInterval=60 -L 5432:localhost:5432 user@server.com
+
+# Compression (utile sur connexion lente)
+ssh -C -L 5432:localhost:5432 user@server.com
+
+# Verbeux pour debug
+ssh -v -L 5432:localhost:5432 user@server.com
+
+# Utiliser une cle specifique
+ssh -i ~/.ssh/my_key -L 5432:localhost:5432 user@server.com
+```
+
+---
+
+## Jump Host / Bastion
+
+**Scenario:** Tu dois acceder a un serveur qui est derriere un bastion.
+
+```
+┌──────────┐          ┌──────────┐          ┌──────────┐
+│  Laptop  │─────────▶│ Bastion  │─────────▶│  Target  │
+│          │   SSH    │ (public) │   SSH    │ (private)│
+└──────────┘          └──────────┘          └──────────┘
+```
+
+### Methode 1: ProxyJump (recommande)
+
+```bash
+# Direct
+ssh -J user@bastion user@target
+
+# Avec config (~/.ssh/config)
+Host target
+    HostName 10.0.1.50
+    User admin
+    ProxyJump user@bastion.example.com
+```
+
+### Methode 2: ProxyCommand
+
+```bash
+# Dans ~/.ssh/config
+Host target
+    HostName 10.0.1.50
+    User admin
+    ProxyCommand ssh -W %h:%p user@bastion.example.com
+```
+
+### Methode 3: Tunnel manuel
+
+```bash
+# Etape 1: Tunnel vers le bastion
+ssh -L 2222:target:22 user@bastion
+
+# Etape 2: SSH via le tunnel
+ssh -p 2222 admin@localhost
+```
+
+---
+
+## SSH Config avance
+
+```bash
+# ~/.ssh/config
+
+# Bastion
+Host bastion
+    HostName bastion.example.com
+    User admin
+    IdentityFile ~/.ssh/bastion_key
+
+# Serveurs derriere le bastion
+Host server-*
+    ProxyJump bastion
+    User deploy
+
+Host server-web
+    HostName 10.0.1.10
+
+Host server-db
+    HostName 10.0.1.20
+    LocalForward 5432 localhost:5432
+
+Host server-redis
+    HostName 10.0.1.30
+    LocalForward 6379 localhost:6379
+
+# Tunnel permanent vers la DB
+Host db-tunnel
+    HostName 10.0.1.20
+    User deploy
+    ProxyJump bastion
+    LocalForward 5432 localhost:5432
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+```
+
+**Utilisation:**
+
+```bash
+# Se connecter au serveur web
+ssh server-web
+
+# Ouvrir le tunnel DB
+ssh -fN db-tunnel
+psql -h localhost -p 5432 mydb
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Local Forward basique
+
+```bash
+# Scenario: Acceder a un service web sur le port 8080 du serveur
+
+# 1. Creer le tunnel
+ssh -L 8080:localhost:8080 user@server.com
+
+# 2. Dans un autre terminal, tester
+curl http://localhost:8080
+
+# 3. Ou ouvrir dans le navigateur
+# http://localhost:8080
+```
+
+### Exercice 2: Tunnel en background
+
+```bash
+# 1. Creer un tunnel persistant
+ssh -fNL 5432:localhost:5432 user@server.com
+
+# 2. Verifier qu'il tourne
+ps aux | grep ssh
+# ou
+ss -tlnp | grep 5432
+
+# 3. Utiliser le tunnel
+psql -h localhost -p 5432 -U myuser mydb
+
+# 4. Tuer le tunnel
+pkill -f "ssh -fNL 5432"
+```
+
+### Exercice 3: Config SSH
+
+```bash
+# 1. Creer un fichier config
+cat >> ~/.ssh/config << 'EOF'
+
+Host myserver
+    HostName server.example.com
+    User admin
+    LocalForward 5432 localhost:5432
+    LocalForward 6379 localhost:6379
+EOF
+
+# 2. Se connecter avec les tunnels automatiques
+ssh myserver
+
+# 3. Les ports 5432 et 6379 sont maintenant forwardes
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Acces complet a une infra privee
+
+**Scenario:** Tu as une infra avec:
+- Un bastion public
+- Un serveur web (10.0.1.10)
+- Une base de donnees (10.0.1.20:5432)
+- Un Redis (10.0.1.30:6379)
+
+**Objectif:** Configurer SSH pour acceder a tout facilement.
+
+```bash
+# ~/.ssh/config
+
+# === BASTION ===
+Host bastion
+    HostName bastion.example.com
+    User admin
+    IdentityFile ~/.ssh/id_rsa
+    # Keep alive
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+
+# === SERVEURS ===
+Host web
+    HostName 10.0.1.10
+    User deploy
+    ProxyJump bastion
+
+Host db
+    HostName 10.0.1.20
+    User deploy
+    ProxyJump bastion
+
+Host redis
+    HostName 10.0.1.30
+    User deploy
+    ProxyJump bastion
+
+# === TUNNELS ===
+Host tunnel-db
+    HostName 10.0.1.20
+    User deploy
+    ProxyJump bastion
+    LocalForward 5432 localhost:5432
+    # Pas de terminal
+    RequestTTY no
+
+Host tunnel-redis
+    HostName 10.0.1.30
+    User deploy
+    ProxyJump bastion
+    LocalForward 6379 localhost:6379
+    RequestTTY no
+
+Host tunnel-all
+    HostName 10.0.1.10
+    User deploy
+    ProxyJump bastion
+    LocalForward 5432 10.0.1.20:5432
+    LocalForward 6379 10.0.1.30:6379
+    RequestTTY no
+```
+
+**Utilisation:**
+
+```bash
+# SSH direct vers les serveurs
+ssh web
+ssh db
+ssh redis
+
+# Ouvrir tous les tunnels
+ssh -fN tunnel-all
+
+# Utiliser les services localement
+psql -h localhost -p 5432 mydb
+redis-cli -h localhost -p 6379
+
+# Fermer les tunnels
+pkill -f "tunnel-all"
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     SSH TUNNELS                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  LOCAL FORWARD (-L)                                          │
+│  "Amene le distant vers moi"                                │
+│  ─────────────────────────                                   │
+│  ssh -L 8080:localhost:80 user@server                       │
+│  → localhost:8080 accede a server:80                        │
+│                                                              │
+│  ssh -L 5432:db.internal:5432 user@server                   │
+│  → localhost:5432 accede a db.internal:5432 via server      │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  REMOTE FORWARD (-R)                                         │
+│  "Expose mon local vers le distant"                         │
+│  ──────────────────────────────────                         │
+│  ssh -R 8080:localhost:3000 user@server                     │
+│  → server:8080 accede a mon localhost:3000                  │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  DYNAMIC FORWARD (-D)                                        │
+│  "Proxy SOCKS"                                              │
+│  ──────────────                                              │
+│  ssh -D 1080 user@server                                    │
+│  → Configure browser SOCKS5: localhost:1080                 │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  OPTIONS UTILES                                              │
+│  ──────────────                                              │
+│  -f    Background (fork)                                    │
+│  -N    Pas de commande remote                               │
+│  -C    Compression                                          │
+│  -v    Verbose/debug                                        │
+│  -J    Jump host (ProxyJump)                                │
+│                                                              │
+│  EXEMPLES                                                    │
+│  ────────                                                    │
+│  ssh -fNL 5432:localhost:5432 user@server   # Background    │
+│  ssh -J bastion user@internal               # Via bastion   │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  SSH CONFIG (~/.ssh/config)                                  │
+│  ──────────────────────────                                  │
+│  Host myserver                                               │
+│      HostName server.example.com                            │
+│      User admin                                              │
+│      ProxyJump bastion                                       │
+│      LocalForward 5432 localhost:5432                       │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi un SSH tunnel?**
+   → Un canal chiffre cree via SSH pour faire passer du trafic. Permet d'acceder a des services non-exposes ou de chiffrer du trafic.
+
+2. **Difference entre -L et -R?**
+   → -L (local): amene un port distant vers toi. -R (remote): expose ton port local sur le serveur distant.
+
+3. **C'est quoi un bastion/jump host?**
+   → Un serveur intermediaire pour acceder a des serveurs prives. Point d'entree securise vers une infra.
+
+4. **Comment garder un tunnel ouvert en permanence?**
+   → Utiliser -f (background) + -N (no command), ou autossh pour reconnexion auto, ou systemd service.
+
+5. **C'est quoi le dynamic forwarding (-D)?**
+   → Cree un proxy SOCKS. Tout le trafic du navigateur/app peut passer par le serveur SSH.
+
+6. **Comment debugger un tunnel qui marche pas?**
+   → ssh -v pour verbose, verifier que le port n'est pas deja utilise (ss -tlnp), verifier le firewall.
+
+---
+
+## Sujets lies
+
+- **Avant:** [VPN](/networking/vpn) - Alternative plus complete pour connecter des reseaux
+- **Avant:** [Firewalls](/networking/firewalls) - Les tunnels traversent les firewalls
+- **Lie:** Linux/SSH - Configuration SSH avancee
+
+---
+
+*Temps estime: 30 min lecture + 25 min pratique*

@@ -1,6 +1,9 @@
 {
   "tcp-udp": "TCP vs UDP",
-  "http-https": "HTTP & HTTPS",
+  "http-https": "HTTP/HTTPS",
   "dns": "DNS",
-  "routing": "Routing"
+  "routing": "Routing",
+  "05-firewalls": "Firewalls",
+  "06-vpn": "VPN",
+  "07-ssh-tunnels": "SSH Tunnels"
 }

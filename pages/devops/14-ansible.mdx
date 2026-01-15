@@ -1,0 +1,802 @@
+# Ansible - Configuration Management
+
+`[INTERMEDIAIRE]` - Temps: 55 min lecture + 40 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Gerer 1 serveur c'est facile. Gerer 100 serveurs identiques c'est un cauchemar sans les bons outils.
+
+**Sans Ansible:**
+- SSH sur chaque serveur
+- Scripts bash fragiles
+- Configuration inconsistante
+- Pas de documentation
+
+**Avec Ansible:**
+- Configuration declarative
+- Idempotent (applique seulement ce qui manque)
+- Agentless (juste SSH)
+- Versionnable (YAML)
+
+---
+
+## What - C'est quoi
+
+### Analogie: La recette de cuisine
+
+Une recette decrit l'etat final du plat (configuration), pas les etapes exactes. Si tu as deja coupe les oignons, tu ne les recoupes pas.
+
+Ansible c'est pareil: tu decris l'etat desire, il fait le necessaire pour y arriver.
+
+### Concepts cles
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CONCEPTS ANSIBLE                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  CONTROL NODE                                                │
+│  ────────────                                                │
+│  - Machine ou Ansible est installe                          │
+│  - Execute les playbooks                                    │
+│  - Necessite Python                                         │
+│                                                              │
+│  MANAGED NODES (Hosts)                                       │
+│  ─────────────────────                                       │
+│  - Serveurs a configurer                                    │
+│  - Necessite Python + SSH                                   │
+│  - Pas d'agent!                                             │
+│                                                              │
+│  INVENTORY                                                   │
+│  ─────────                                                   │
+│  - Liste des hosts                                          │
+│  - Groupes de hosts                                         │
+│  - Variables par host/groupe                                │
+│                                                              │
+│  PLAYBOOK                                                    │
+│  ────────                                                    │
+│  - Fichier YAML                                             │
+│  - Liste de plays                                           │
+│  - Chaque play = tasks sur des hosts                        │
+│                                                              │
+│  TASK                                                        │
+│  ────                                                        │
+│  - Une action unitaire                                      │
+│  - Utilise un module                                        │
+│                                                              │
+│  MODULE                                                      │
+│  ──────                                                      │
+│  - Code qui fait le travail                                 │
+│  - apt, yum, file, template, service...                     │
+│  - Idempotent                                               │
+│                                                              │
+│  ROLE                                                        │
+│  ────                                                        │
+│  - Collection de tasks/files/templates                      │
+│  - Reutilisable                                             │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ARCHITECTURE ANSIBLE                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Control Node                                                │
+│  ┌──────────────────────────────────┐                       │
+│  │  ansible-playbook site.yml       │                       │
+│  │                                   │                       │
+│  │  ┌───────────┐  ┌───────────┐   │                       │
+│  │  │ Playbooks │  │ Inventory │   │                       │
+│  │  └───────────┘  └───────────┘   │                       │
+│  └──────────────────────────────────┘                       │
+│              │                                               │
+│              │ SSH                                           │
+│              ▼                                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                  │
+│  │  web-1   │  │  web-2   │  │   db-1   │                  │
+│  │ (Python) │  │ (Python) │  │ (Python) │                  │
+│  └──────────┘  └──────────┘  └──────────┘                  │
+│  Managed Nodes                                               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Installation
+
+```bash
+# pip (recommande)
+pip install ansible
+
+# Ubuntu/Debian
+sudo apt install ansible
+
+# macOS
+brew install ansible
+
+# Verifier
+ansible --version
+```
+
+### Inventory
+
+```ini
+# inventory.ini
+[webservers]
+web1.example.com
+web2.example.com
+web3.example.com ansible_host=192.168.1.13
+
+[dbservers]
+db1.example.com
+db2.example.com
+
+[production:children]
+webservers
+dbservers
+
+[webservers:vars]
+http_port=80
+ansible_user=deploy
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+```
+
+```yaml
+# inventory.yml
+all:
+  children:
+    webservers:
+      hosts:
+        web1.example.com:
+        web2.example.com:
+          http_port: 8080
+      vars:
+        http_port: 80
+    dbservers:
+      hosts:
+        db1.example.com:
+        db2.example.com:
+      vars:
+        db_port: 5432
+  vars:
+    ansible_user: deploy
+    ansible_python_interpreter: /usr/bin/python3
+```
+
+### Commandes Ad-hoc
+
+```bash
+# Ping tous les hosts
+ansible all -i inventory.ini -m ping
+
+# Executer une commande
+ansible webservers -i inventory.ini -m command -a "uptime"
+ansible webservers -i inventory.ini -m shell -a "free -m | head -2"
+
+# Installer un package
+ansible webservers -i inventory.ini -m apt -a "name=nginx state=present" -b
+
+# Copier un fichier
+ansible webservers -i inventory.ini -m copy -a "src=file.txt dest=/tmp/"
+
+# Gerer un service
+ansible webservers -i inventory.ini -m service -a "name=nginx state=started" -b
+
+# Recolter les facts
+ansible webservers -i inventory.ini -m setup
+
+# Options
+# -i: inventory
+# -m: module
+# -a: arguments
+# -b: become (sudo)
+# -u: user
+# -k: ask password
+```
+
+### Premier Playbook
+
+```yaml
+# site.yml
+---
+- name: Configure web servers
+  hosts: webservers
+  become: yes
+
+  vars:
+    http_port: 80
+    document_root: /var/www/html
+
+  tasks:
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Start nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Copy index page
+      copy:
+        content: "<h1>Hello Ansible!</h1>"
+        dest: "{{ document_root }}/index.html"
+```
+
+```bash
+ansible-playbook -i inventory.ini site.yml
+ansible-playbook -i inventory.ini site.yml --check  # Dry run
+ansible-playbook -i inventory.ini site.yml --diff   # Show changes
+```
+
+### Modules courants
+
+```yaml
+# === PACKAGES ===
+- name: Install packages (Debian/Ubuntu)
+  apt:
+    name:
+      - nginx
+      - python3
+    state: present
+    update_cache: yes
+
+- name: Install packages (RedHat/CentOS)
+  yum:
+    name: nginx
+    state: present
+
+# === FICHIERS ===
+- name: Copy file
+  copy:
+    src: files/app.conf
+    dest: /etc/app/app.conf
+    owner: root
+    mode: '0644'
+
+- name: Template file
+  template:
+    src: templates/nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+  notify: Restart nginx
+
+- name: Create directory
+  file:
+    path: /var/www/app
+    state: directory
+    owner: www-data
+    mode: '0755'
+
+- name: Delete file
+  file:
+    path: /tmp/old.txt
+    state: absent
+
+- name: Download file
+  get_url:
+    url: https://example.com/file.tar.gz
+    dest: /tmp/file.tar.gz
+
+- name: Extract archive
+  unarchive:
+    src: /tmp/file.tar.gz
+    dest: /opt/
+    remote_src: yes
+
+# === SERVICES ===
+- name: Manage service
+  service:
+    name: nginx
+    state: started    # started, stopped, restarted, reloaded
+    enabled: yes
+
+- name: Systemd service
+  systemd:
+    name: myapp
+    state: started
+    daemon_reload: yes
+
+# === USERS ===
+- name: Create user
+  user:
+    name: deploy
+    groups: sudo
+    shell: /bin/bash
+    generate_ssh_key: yes
+
+- name: Add SSH key
+  authorized_key:
+    user: deploy
+    key: "{{ lookup('file', 'keys/deploy.pub') }}"
+
+# === COMMANDS ===
+- name: Run command
+  command: /opt/app/deploy.sh
+  args:
+    chdir: /opt/app
+    creates: /opt/app/.deployed  # Skip if exists
+
+- name: Run shell command
+  shell: |
+    cd /opt/app
+    ./build.sh && ./deploy.sh
+  args:
+    executable: /bin/bash
+
+# === GIT ===
+- name: Clone repository
+  git:
+    repo: https://github.com/user/app.git
+    dest: /opt/app
+    version: main
+    force: yes
+
+# === DOCKER ===
+- name: Pull Docker image
+  docker_image:
+    name: nginx
+    tag: latest
+    source: pull
+
+- name: Run container
+  docker_container:
+    name: web
+    image: nginx:latest
+    ports:
+      - "8080:80"
+    state: started
+```
+
+### Variables
+
+```yaml
+# Dans le playbook
+vars:
+  app_name: myapp
+  app_port: 8080
+
+# Dans un fichier vars
+vars_files:
+  - vars/main.yml
+  - "vars/{{ environment }}.yml"
+
+# Utilisation
+tasks:
+  - name: Configure app
+    template:
+      src: app.conf.j2
+      dest: "/etc/{{ app_name }}/config.yml"
+
+# Variables par host (host_vars/web1.example.com.yml)
+http_port: 8080
+
+# Variables par groupe (group_vars/webservers.yml)
+nginx_workers: 4
+
+# Variables d'environnement
+- name: Set env
+  environment:
+    APP_ENV: production
+  command: ./start.sh
+
+# Facts (collectes automatiquement)
+- debug:
+    msg: "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+```
+
+### Handlers
+
+```yaml
+# handlers/main.yml
+handlers:
+  - name: Restart nginx
+    service:
+      name: nginx
+      state: restarted
+
+  - name: Reload nginx
+    service:
+      name: nginx
+      state: reloaded
+
+# Dans les tasks
+tasks:
+  - name: Update nginx config
+    template:
+      src: nginx.conf.j2
+      dest: /etc/nginx/nginx.conf
+    notify:
+      - Restart nginx
+```
+
+### Conditions et boucles
+
+```yaml
+# Conditions
+- name: Install on Debian
+  apt:
+    name: nginx
+  when: ansible_os_family == "Debian"
+
+- name: Install on RedHat
+  yum:
+    name: nginx
+  when: ansible_os_family == "RedHat"
+
+- name: Configure if variable defined
+  template:
+    src: app.conf.j2
+    dest: /etc/app/config
+  when: app_config is defined
+
+# Boucles
+- name: Install packages
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - nginx
+    - python3
+    - git
+
+- name: Create users
+  user:
+    name: "{{ item.name }}"
+    groups: "{{ item.groups }}"
+  loop:
+    - { name: alice, groups: sudo }
+    - { name: bob, groups: developers }
+
+# With dict
+- name: Configure vhosts
+  template:
+    src: vhost.conf.j2
+    dest: "/etc/nginx/sites-enabled/{{ item.key }}.conf"
+  loop: "{{ vhosts | dict2items }}"
+```
+
+### Roles
+
+```
+# Structure
+roles/
+└── nginx/
+    ├── tasks/
+    │   └── main.yml
+    ├── handlers/
+    │   └── main.yml
+    ├── templates/
+    │   └── nginx.conf.j2
+    ├── files/
+    │   └── index.html
+    ├── vars/
+    │   └── main.yml
+    ├── defaults/
+    │   └── main.yml
+    └── meta/
+        └── main.yml
+```
+
+```yaml
+# roles/nginx/tasks/main.yml
+---
+- name: Install nginx
+  apt:
+    name: nginx
+    state: present
+  notify: Restart nginx
+
+- name: Configure nginx
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+  notify: Restart nginx
+
+- name: Enable nginx
+  service:
+    name: nginx
+    enabled: yes
+    state: started
+
+# roles/nginx/defaults/main.yml
+---
+nginx_port: 80
+nginx_workers: auto
+
+# roles/nginx/handlers/main.yml
+---
+- name: Restart nginx
+  service:
+    name: nginx
+    state: restarted
+```
+
+```yaml
+# site.yml - Utiliser le role
+---
+- name: Configure web servers
+  hosts: webservers
+  become: yes
+
+  roles:
+    - nginx
+    - { role: app, app_port: 8080 }
+```
+
+### Ansible Galaxy
+
+```bash
+# Installer un role
+ansible-galaxy install geerlingguy.docker
+ansible-galaxy install -r requirements.yml
+
+# requirements.yml
+---
+roles:
+  - name: geerlingguy.docker
+  - name: geerlingguy.nginx
+    version: 4.0.0
+
+collections:
+  - name: community.docker
+  - name: amazon.aws
+```
+
+### Templates Jinja2
+
+```jinja
+{# templates/nginx.conf.j2 #}
+worker_processes {{ nginx_workers | default('auto') }};
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    {% for server in servers %}
+    server {
+        listen {{ server.port | default(80) }};
+        server_name {{ server.name }};
+
+        {% if server.ssl | default(false) %}
+        ssl_certificate {{ server.ssl_cert }};
+        ssl_certificate_key {{ server.ssl_key }};
+        {% endif %}
+
+        location / {
+            proxy_pass http://{{ server.upstream }};
+        }
+    }
+    {% endfor %}
+}
+```
+
+### Ansible Vault
+
+```bash
+# Creer un fichier chiffre
+ansible-vault create secrets.yml
+
+# Editer
+ansible-vault edit secrets.yml
+
+# Chiffrer un fichier existant
+ansible-vault encrypt vars.yml
+
+# Dechiffrer
+ansible-vault decrypt vars.yml
+
+# Executer avec vault
+ansible-playbook site.yml --ask-vault-pass
+ansible-playbook site.yml --vault-password-file .vault_pass
+```
+
+```yaml
+# secrets.yml (chiffre)
+---
+db_password: supersecret
+api_key: abc123
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Premier playbook
+
+```yaml
+# web.yml
+---
+- name: Setup web server
+  hosts: localhost
+  connection: local
+  become: yes
+
+  tasks:
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Create index page
+      copy:
+        content: "<h1>Hello from Ansible</h1>"
+        dest: /var/www/html/index.html
+
+    - name: Ensure nginx is running
+      service:
+        name: nginx
+        state: started
+```
+
+```bash
+ansible-playbook web.yml
+curl localhost
+```
+
+### Exercice 2: Role simple
+
+```bash
+# Creer la structure
+mkdir -p roles/webserver/{tasks,handlers,templates,defaults}
+
+cat > roles/webserver/defaults/main.yml << 'EOF'
+---
+app_port: 8080
+app_name: myapp
+EOF
+
+cat > roles/webserver/tasks/main.yml << 'EOF'
+---
+- name: Install nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Configure nginx
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/sites-enabled/default
+  notify: Reload nginx
+EOF
+
+cat > roles/webserver/handlers/main.yml << 'EOF'
+---
+- name: Reload nginx
+  service:
+    name: nginx
+    state: reloaded
+EOF
+
+cat > roles/webserver/templates/nginx.conf.j2 << 'EOF'
+server {
+    listen {{ app_port }};
+    server_name {{ app_name }};
+
+    location / {
+        root /var/www/html;
+    }
+}
+EOF
+
+# Utiliser
+cat > site.yml << 'EOF'
+---
+- hosts: localhost
+  connection: local
+  become: yes
+  roles:
+    - webserver
+EOF
+
+ansible-playbook site.yml
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        ANSIBLE                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  COMMANDS                                                    │
+│  ────────                                                    │
+│  ansible all -m ping                    # Test connectivity │
+│  ansible-playbook site.yml              # Run playbook      │
+│  ansible-playbook site.yml --check      # Dry run           │
+│  ansible-playbook site.yml -l webservers # Limit hosts     │
+│  ansible-vault create secrets.yml       # Create vault      │
+│                                                              │
+│  PLAYBOOK STRUCTURE                                          │
+│  ──────────────────                                          │
+│  - name: Play name                                          │
+│    hosts: webservers                                        │
+│    become: yes                                              │
+│    vars:                                                     │
+│      var: value                                             │
+│    tasks:                                                    │
+│      - name: Task name                                      │
+│        module:                                              │
+│          param: value                                       │
+│                                                              │
+│  MODULES                                                     │
+│  ───────                                                     │
+│  apt/yum: packages                                          │
+│  copy/template: files                                       │
+│  file: directories, permissions                             │
+│  service/systemd: services                                  │
+│  user: users                                                 │
+│  git: repositories                                          │
+│  command/shell: commands                                    │
+│                                                              │
+│  CONDITIONS                                                  │
+│  ──────────                                                  │
+│  when: ansible_os_family == "Debian"                        │
+│  when: var is defined                                       │
+│  when: var | bool                                           │
+│                                                              │
+│  LOOPS                                                       │
+│  ─────                                                       │
+│  loop: [a, b, c]                                            │
+│  loop: "{{ list_var }}"                                     │
+│                                                              │
+│  ROLES                                                       │
+│  ─────                                                       │
+│  roles/rolename/tasks/main.yml                              │
+│  roles/rolename/handlers/main.yml                           │
+│  roles/rolename/templates/                                  │
+│  roles/rolename/defaults/main.yml                           │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi Ansible?**
+   → Outil de configuration management, agentless (SSH), idempotent, declaratif (YAML).
+
+2. **C'est quoi l'idempotence?**
+   → Appliquer plusieurs fois donne le meme resultat. Ansible ne fait que ce qui manque.
+
+3. **Difference entre copy et template?**
+   → copy: fichier statique. template: fichier Jinja2 avec variables.
+
+4. **C'est quoi un handler?**
+   → Task declenche par notify. Execute une seule fois a la fin, meme si notifie plusieurs fois.
+
+5. **Comment gerer les secrets?**
+   → Ansible Vault pour chiffrer les fichiers. Integration avec HashiCorp Vault aussi possible.
+
+6. **Difference entre role et playbook?**
+   → Playbook: liste de plays/tasks. Role: collection reutilisable (tasks, handlers, templates, vars).
+
+---
+
+## Sujets lies
+
+- **Avant:** [Python](/devops/python) - Ansible est en Python
+- **Lie:** [Terraform](/devops/terraform) - IaC complementaire
+- **Lie:** [Jenkins](/devops/jenkins) - CI/CD avec Ansible
+
+---
+
+*Temps estime: 55 min lecture + 40 min pratique*

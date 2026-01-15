@@ -1,0 +1,633 @@
+# Prometheus - Monitoring & Alerting
+
+`[INTERMEDIAIRE]` - Temps: 50 min lecture + 35 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Sans monitoring, tu navigues a l'aveugle:
+- Comment savoir si l'app est lente?
+- Comment detecter les problemes avant les users?
+- Comment planifier la capacite?
+- Comment debugger les incidents?
+
+Prometheus est devenu le standard du monitoring cloud-native, surtout avec Kubernetes.
+
+---
+
+## What - C'est quoi
+
+### Analogie: Les capteurs de voiture
+
+Ta voiture a des capteurs partout: vitesse, temperature, carburant, pression pneus. Le tableau de bord affiche ces metriques et alerte si quelque chose ne va pas.
+
+Prometheus fait pareil pour tes applications.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ARCHITECTURE PROMETHEUS                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
+│  │   Target    │    │   Target    │    │   Target    │     │
+│  │   :9090     │    │   :8080     │    │   :9100     │     │
+│  │ /metrics    │    │ /metrics    │    │ /metrics    │     │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘     │
+│         │                  │                  │             │
+│         └──────────────────┼──────────────────┘             │
+│                            │ PULL                           │
+│                            ▼                                │
+│  ┌──────────────────────────────────────────────────┐      │
+│  │                  PROMETHEUS                       │      │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  │      │
+│  │  │ Retrieval  │  │   TSDB     │  │   HTTP     │  │      │
+│  │  │   (Pull)   │  │  (Storage) │  │  (API/UI)  │  │      │
+│  │  └────────────┘  └────────────┘  └────────────┘  │      │
+│  │                                                   │      │
+│  │  ┌────────────┐                                   │      │
+│  │  │Alertmanager│                                   │      │
+│  │  │ Integration│                                   │      │
+│  │  └────────────┘                                   │      │
+│  └────────────────────────┬─────────────────────────┘      │
+│                           │                                 │
+│         ┌─────────────────┼─────────────────┐              │
+│         ▼                 ▼                 ▼              │
+│  ┌────────────┐    ┌────────────┐    ┌────────────┐       │
+│  │  Grafana   │    │Alertmanager│    │   PromQL   │       │
+│  │ (Dashboards)    │  (Alerts)  │    │  (Queries) │       │
+│  └────────────┘    └────────────┘    └────────────┘       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Concepts cles
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CONCEPTS PROMETHEUS                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  METRIC                                                      │
+│  ──────                                                      │
+│  - Valeur numerique mesuree dans le temps                   │
+│  - Nom + labels + valeur + timestamp                        │
+│  - Ex: http_requests_total{method="GET", status="200"} 1234│
+│                                                              │
+│  TYPES DE METRIQUES                                          │
+│  ─────────────────                                           │
+│  Counter: Valeur qui augmente (requests, errors)            │
+│  Gauge: Valeur qui monte/descend (temperature, RAM)         │
+│  Histogram: Distribution (latence, taille)                  │
+│  Summary: Comme histogram, calcule percentiles              │
+│                                                              │
+│  LABELS                                                      │
+│  ──────                                                      │
+│  - Dimensions d'une metrique                                │
+│  - Permettent le filtrage et l'agregation                   │
+│  - Ex: instance="web-1", job="api", env="prod"              │
+│                                                              │
+│  TARGET                                                      │
+│  ──────                                                      │
+│  - Endpoint /metrics a scraper                              │
+│  - Expose des metriques au format Prometheus                │
+│                                                              │
+│  SCRAPE                                                      │
+│  ──────                                                      │
+│  - Prometheus PULL les metriques                            │
+│  - Configurable (interval, timeout)                         │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Installation Docker
+
+```bash
+# Prometheus
+docker run -d \
+  --name prometheus \
+  -p 9090:9090 \
+  -v ./prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus
+
+# Node Exporter (metriques systeme)
+docker run -d \
+  --name node-exporter \
+  -p 9100:9100 \
+  prom/node-exporter
+
+# Grafana
+docker run -d \
+  --name grafana \
+  -p 3000:3000 \
+  grafana/grafana
+```
+
+### Configuration
+
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+rule_files:
+  - "alerts/*.yml"
+
+scrape_configs:
+  # Prometheus lui-meme
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node exporter
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # Application
+  - job_name: 'myapp'
+    static_configs:
+      - targets: ['app:8080']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Kubernetes (service discovery)
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+```
+
+### PromQL - Requetes
+
+```promql
+# === REQUETES DE BASE ===
+
+# Valeur actuelle d'une metrique
+http_requests_total
+
+# Avec filtre
+http_requests_total{status="200"}
+http_requests_total{method="GET", status=~"2.."}  # Regex
+
+# Range vector (series sur une periode)
+http_requests_total[5m]
+
+# === FONCTIONS ===
+
+# Rate (vitesse de changement par seconde)
+rate(http_requests_total[5m])
+
+# Increase (augmentation sur la periode)
+increase(http_requests_total[1h])
+
+# Sum (agregation)
+sum(rate(http_requests_total[5m]))
+sum by (status) (rate(http_requests_total[5m]))
+sum without (instance) (rate(http_requests_total[5m]))
+
+# Average
+avg(node_cpu_seconds_total)
+avg by (instance) (node_memory_MemFree_bytes)
+
+# Max/Min
+max(node_filesystem_avail_bytes)
+min(up)
+
+# Count
+count(up == 1)
+
+# Percentiles (histogram)
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
+
+# === OPERATEURS ===
+
+# Arithmetique
+node_memory_MemTotal_bytes - node_memory_MemFree_bytes
+(node_memory_MemTotal_bytes - node_memory_MemFree_bytes) / node_memory_MemTotal_bytes * 100
+
+# Comparaison
+http_requests_total > 1000
+up == 0
+
+# Logique
+http_requests_total{status="500"} > 10 and http_requests_total{status="500"} < 100
+
+# === EXEMPLES PRATIQUES ===
+
+# Requetes par seconde
+rate(http_requests_total[5m])
+
+# Taux d'erreur
+sum(rate(http_requests_total{status=~"5.."}[5m])) /
+sum(rate(http_requests_total[5m])) * 100
+
+# Latence P95
+histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
+
+# CPU usage
+100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# Memory usage %
+(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
+
+# Disk usage %
+(1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100
+
+# Uptime
+time() - node_boot_time_seconds
+```
+
+### Alerting Rules
+
+```yaml
+# alerts/app.yml
+groups:
+  - name: application
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) /
+          sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+          description: "P95 latency is {{ $value }}s"
+
+  - name: infrastructure
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} down"
+
+      - alert: HighCPU
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}%"
+
+      - alert: DiskSpaceLow
+        expr: |
+          (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space low on {{ $labels.instance }}"
+```
+
+### Alertmanager
+
+```yaml
+# alertmanager.yml
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_from: 'alertmanager@example.com'
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical'
+      continue: true
+
+    - match:
+        severity: warning
+      receiver: 'warning'
+
+receivers:
+  - name: 'default'
+    email_configs:
+      - to: 'team@example.com'
+
+  - name: 'critical'
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/xxx'
+        channel: '#alerts-critical'
+        title: '{{ .CommonAnnotations.summary }}'
+        text: '{{ .CommonAnnotations.description }}'
+    pagerduty_configs:
+      - service_key: 'xxx'
+
+  - name: 'warning'
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/xxx'
+        channel: '#alerts'
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
+```
+
+### Instrumenter une app (Python)
+
+```python
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
+import time
+
+# Metriques
+REQUEST_COUNT = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status']
+)
+
+REQUEST_LATENCY = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request latency',
+    ['method', 'endpoint'],
+    buckets=[.005, .01, .025, .05, .075, .1, .25, .5, .75, 1.0, 2.5, 5.0]
+)
+
+IN_PROGRESS = Gauge(
+    'http_requests_in_progress',
+    'HTTP requests in progress'
+)
+
+# Decorateur
+def track_request(method, endpoint):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            IN_PROGRESS.inc()
+            start = time.time()
+            try:
+                result = func(*args, **kwargs)
+                status = "200"
+                return result
+            except Exception:
+                status = "500"
+                raise
+            finally:
+                duration = time.time() - start
+                REQUEST_COUNT.labels(method=method, endpoint=endpoint, status=status).inc()
+                REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(duration)
+                IN_PROGRESS.dec()
+        return wrapper
+    return decorator
+
+# Usage
+@track_request("GET", "/api/users")
+def get_users():
+    time.sleep(0.1)  # Simulate work
+    return []
+
+# Demarrer le serveur de metriques
+if __name__ == "__main__":
+    start_http_server(8000)  # /metrics sur port 8000
+    while True:
+        get_users()
+        time.sleep(1)
+```
+
+### Exporters courants
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    EXPORTERS                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Node Exporter (9100)                                        │
+│  - CPU, Memory, Disk, Network                               │
+│  - Processus systeme                                        │
+│                                                              │
+│  Blackbox Exporter (9115)                                    │
+│  - HTTP, TCP, ICMP probes                                   │
+│  - Uptime monitoring                                        │
+│                                                              │
+│  MySQL Exporter (9104)                                       │
+│  - Queries, connections, replication                        │
+│                                                              │
+│  PostgreSQL Exporter (9187)                                  │
+│  - Connections, queries, tables                             │
+│                                                              │
+│  Redis Exporter (9121)                                       │
+│  - Commands, memory, connections                            │
+│                                                              │
+│  Nginx Exporter (9113)                                       │
+│  - Connections, requests                                    │
+│                                                              │
+│  cAdvisor (8080)                                             │
+│  - Container metrics                                        │
+│  - CPU, memory, network par container                       │
+│                                                              │
+│  kube-state-metrics                                          │
+│  - Kubernetes objects                                       │
+│  - Pods, deployments, nodes                                 │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Grafana
+
+```bash
+# Ajouter Prometheus comme data source
+# Configuration > Data Sources > Add data source
+# Type: Prometheus
+# URL: http://prometheus:9090
+
+# Importer des dashboards
+# Dashboards > Import
+# ID: 1860 (Node Exporter Full)
+# ID: 315 (Kubernetes cluster)
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Setup complet
+
+```yaml
+# docker-compose.yml
+version: '3'
+services:
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  node-exporter:
+    image: prom/node-exporter
+    ports:
+      - "9100:9100"
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+```
+
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+```
+
+```bash
+docker-compose up -d
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000 (admin/admin)
+```
+
+### Exercice 2: PromQL queries
+
+```promql
+# Dans Prometheus UI (localhost:9090)
+
+# CPU usage
+100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# Memory usage
+(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
+
+# Network traffic
+rate(node_network_receive_bytes_total[5m])
+
+# Disk I/O
+rate(node_disk_read_bytes_total[5m])
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      PROMETHEUS                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  METRIC TYPES                                                │
+│  ────────────                                                │
+│  Counter: http_requests_total     # Toujours augmente       │
+│  Gauge: temperature_celsius       # Monte/descend           │
+│  Histogram: request_duration_*    # Distribution            │
+│  Summary: request_latency_*       # Percentiles             │
+│                                                              │
+│  PROMQL                                                      │
+│  ──────                                                      │
+│  metric{label="value"}            # Filtrer                 │
+│  metric[5m]                       # Range vector            │
+│  rate(counter[5m])                # Taux/seconde            │
+│  increase(counter[1h])            # Augmentation            │
+│  sum by (label) (metric)          # Agregation              │
+│  histogram_quantile(0.95, ...)    # Percentile              │
+│                                                              │
+│  COMMON QUERIES                                              │
+│  ──────────────                                              │
+│  # Request rate                                              │
+│  rate(http_requests_total[5m])                              │
+│                                                              │
+│  # Error rate %                                              │
+│  sum(rate(errors[5m])) / sum(rate(total[5m])) * 100         │
+│                                                              │
+│  # CPU usage %                                               │
+│  100 - avg(rate(node_cpu{mode="idle"}[5m])) * 100           │
+│                                                              │
+│  # Memory usage %                                            │
+│  (1 - node_memory_MemAvailable / node_memory_MemTotal) * 100│
+│                                                              │
+│  ALERTING                                                    │
+│  ────────                                                    │
+│  expr: metric > threshold                                   │
+│  for: 5m                          # Duree avant alerte      │
+│  labels: { severity: critical }                             │
+│  annotations: { summary: "..." }                            │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi Prometheus?**
+   → Systeme de monitoring open-source. Pull-based, TSDB, PromQL, alerting. Standard pour Kubernetes.
+
+2. **Difference entre pull et push?**
+   → Pull: Prometheus scrape les targets. Push: les apps envoient les metriques. Pull plus adapte au cloud (service discovery).
+
+3. **C'est quoi PromQL?**
+   → Langage de requete pour Prometheus. Permet de filtrer, agreger, calculer des rates/percentiles.
+
+4. **Types de metriques?**
+   → Counter (toujours augmente), Gauge (monte/descend), Histogram (distribution), Summary (percentiles pre-calcules).
+
+5. **Comment alerter?**
+   → Recording rules dans Prometheus, Alertmanager pour router les alertes (Slack, PagerDuty, email).
+
+6. **Prometheus vs autres solutions?**
+   → Datadog/New Relic: SaaS, plus simple, payant. ELK: plus pour logs. Prometheus: open source, cloud-native.
+
+---
+
+## Sujets lies
+
+- **Lie:** [Kubernetes](/devops/kubernetes) - Monitoring K8s
+- **Lie:** [Docker](/devops/docker) - Container metrics
+- **Apres:** Grafana - Visualisation avancee
+
+---
+
+*Temps estime: 50 min lecture + 35 min pratique*

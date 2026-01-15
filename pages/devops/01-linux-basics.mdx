@@ -1,0 +1,598 @@
+# Linux Basics - La base de tout
+
+`[DEBUTANT]` - Temps: 45 min lecture + 40 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+95% des serveurs tournent sous Linux. Si tu veux faire du DevOps, tu DOIS maitriser Linux. C'est non-negotiable.
+
+Chaque jour tu vas:
+- Te connecter a des serveurs Linux
+- Executer des commandes shell
+- Lire des logs
+- Gerer des processus
+- Debugger des problemes
+
+---
+
+## What - C'est quoi
+
+### Linux en bref
+
+Linux = systeme d'exploitation open source cree par Linus Torvalds en 1991.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ARCHITECTURE LINUX                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              Applications (nginx, docker, etc)       │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                          │                                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                    Shell (bash, zsh)                 │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                          │                                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                      Kernel                          │    │
+│  │   (gestion memoire, processus, drivers, reseau)     │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                          │                                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                     Hardware                         │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Distributions principales
+
+| Distribution | Use Case | Package Manager |
+|--------------|----------|-----------------|
+| Ubuntu/Debian | Serveurs, Desktop | apt |
+| CentOS/RHEL | Enterprise | yum/dnf |
+| Alpine | Containers (leger) | apk |
+| Amazon Linux | AWS | yum |
+
+---
+
+## How - En pratique
+
+### Navigation dans le filesystem
+
+```bash
+# Ou suis-je?
+pwd
+
+# Lister les fichiers
+ls          # basique
+ls -la      # tout avec details
+ls -lh      # tailles lisibles
+ls -lt      # tri par date
+
+# Se deplacer
+cd /var/log          # chemin absolu
+cd ..                # parent
+cd ~                 # home
+cd -                 # precedent
+
+# Arborescence
+tree                 # voir la structure
+tree -L 2            # 2 niveaux max
+```
+
+### Structure du filesystem
+
+```
+/
+├── bin/        # Binaires essentiels (ls, cp, etc)
+├── etc/        # Configuration systeme
+├── home/       # Repertoires utilisateurs
+├── var/        # Donnees variables (logs, cache)
+│   ├── log/    # Logs systeme
+│   └── www/    # Sites web
+├── tmp/        # Fichiers temporaires
+├── opt/        # Applications tierces
+├── usr/        # Programmes utilisateur
+│   ├── bin/    # Binaires non-essentiels
+│   └── local/  # Installations locales
+└── root/       # Home de root
+```
+
+### Manipulation de fichiers
+
+```bash
+# Creer
+touch fichier.txt           # fichier vide
+mkdir dossier               # repertoire
+mkdir -p path/to/deep/dir   # avec parents
+
+# Copier
+cp source dest
+cp -r dossier/ dest/        # recursif
+
+# Deplacer/Renommer
+mv ancien nouveau
+mv fichier.txt /autre/path/
+
+# Supprimer
+rm fichier.txt
+rm -r dossier/              # recursif
+rm -rf dossier/             # force (DANGER!)
+
+# Liens
+ln -s /path/to/original link_name   # lien symbolique
+```
+
+### Lire des fichiers
+
+```bash
+# Afficher tout
+cat fichier.txt
+
+# Paginer
+less fichier.txt            # navigation avec fleches
+more fichier.txt            # basique
+
+# Debut/Fin
+head fichier.txt            # 10 premieres lignes
+head -n 50 fichier.txt      # 50 premieres
+tail fichier.txt            # 10 dernieres
+tail -n 100 fichier.txt     # 100 dernieres
+tail -f fichier.txt         # suivre en temps reel (logs!)
+
+# Compter
+wc -l fichier.txt           # lignes
+wc -w fichier.txt           # mots
+```
+
+### Rechercher
+
+```bash
+# Chercher des fichiers
+find /var -name "*.log"                    # par nom
+find . -type f -size +100M                 # fichiers > 100MB
+find . -type f -mtime -1                   # modifies < 24h
+find . -name "*.tmp" -delete               # trouver et supprimer
+
+# Chercher dans le contenu
+grep "error" fichier.txt                   # dans un fichier
+grep -r "error" /var/log/                  # recursif
+grep -i "error" fichier.txt                # ignore case
+grep -n "error" fichier.txt                # avec numeros de ligne
+grep -v "debug" fichier.txt                # inverser (exclure)
+grep -E "error|warning" fichier.txt        # regex
+
+# Chercher une commande
+which nginx                                # chemin du binaire
+whereis nginx                              # binaire + man + sources
+```
+
+### Permissions
+
+```bash
+# Format: rwxrwxrwx = owner-group-others
+# r=read(4), w=write(2), x=execute(1)
+
+# Voir les permissions
+ls -la
+
+# Changer les permissions
+chmod 755 script.sh         # rwxr-xr-x
+chmod 644 fichier.txt       # rw-r--r--
+chmod +x script.sh          # ajouter execute
+chmod -w fichier.txt        # retirer write
+
+# Changer le proprietaire
+chown user fichier.txt
+chown user:group fichier.txt
+chown -R user:group dossier/    # recursif
+
+# Permissions courantes
+# 755 - scripts, repertoires executables
+# 644 - fichiers normaux
+# 600 - fichiers sensibles (cles SSH)
+# 700 - repertoires prives
+```
+
+### Gestion des processus
+
+```bash
+# Voir les processus
+ps aux                      # tous les processus
+ps aux | grep nginx         # filtrer
+top                         # temps reel
+htop                        # meilleur (installer si absent)
+
+# Tuer un processus
+kill PID                    # signal TERM (propre)
+kill -9 PID                 # signal KILL (force)
+killall nginx               # par nom
+pkill -f "pattern"          # par pattern
+
+# Background/Foreground
+command &                   # lancer en background
+jobs                        # voir les jobs
+fg %1                       # ramener au foreground
+bg %1                       # envoyer en background
+nohup command &             # survit a la deconnexion
+
+# Ressources
+free -h                     # memoire
+df -h                       # espace disque
+du -sh /var/*               # taille des dossiers
+```
+
+### Editeurs de texte
+
+```bash
+# Nano (simple)
+nano fichier.txt
+# Ctrl+O = sauver, Ctrl+X = quitter
+
+# Vim (puissant)
+vim fichier.txt
+# i = mode insertion
+# Esc = mode normal
+# :w = sauver
+# :q = quitter
+# :wq = sauver et quitter
+# :q! = quitter sans sauver
+# /pattern = rechercher
+# dd = supprimer ligne
+# yy = copier ligne
+# p = coller
+```
+
+### Utilisateurs et groupes
+
+```bash
+# Info utilisateur courant
+whoami
+id
+
+# Gerer les utilisateurs
+sudo useradd -m username        # creer avec home
+sudo passwd username            # definir mot de passe
+sudo userdel -r username        # supprimer avec home
+sudo usermod -aG sudo username  # ajouter au groupe sudo
+
+# Gerer les groupes
+groups                          # mes groupes
+sudo groupadd mygroup
+sudo usermod -aG mygroup user
+
+# Changer d'utilisateur
+su - username                   # login complet
+sudo -u username command        # executer comme autre user
+sudo -i                         # shell root
+```
+
+### Services (systemd)
+
+```bash
+# Status
+systemctl status nginx
+systemctl is-active nginx
+systemctl is-enabled nginx
+
+# Controle
+sudo systemctl start nginx
+sudo systemctl stop nginx
+sudo systemctl restart nginx
+sudo systemctl reload nginx     # recharger config
+
+# Activation au boot
+sudo systemctl enable nginx
+sudo systemctl disable nginx
+
+# Logs
+journalctl -u nginx             # logs du service
+journalctl -u nginx -f          # suivre en temps reel
+journalctl -u nginx --since "1 hour ago"
+```
+
+### Reseau de base
+
+```bash
+# Info reseau
+ip addr                         # interfaces et IPs
+ip route                        # table de routage
+ss -tlnp                        # ports en ecoute
+ss -tanp                        # connexions actives
+
+# Test connectivite
+ping google.com
+ping -c 4 google.com            # 4 pings seulement
+curl ifconfig.me                # mon IP publique
+
+# DNS
+dig google.com
+nslookup google.com
+cat /etc/resolv.conf            # serveurs DNS
+
+# Telecharger
+wget https://example.com/file.tar.gz
+curl -O https://example.com/file.tar.gz
+curl -sL https://example.com/script.sh | bash   # danger!
+```
+
+### Archivage et compression
+
+```bash
+# Tar (archivage)
+tar -cvf archive.tar dossier/       # creer archive
+tar -xvf archive.tar                # extraire
+tar -tvf archive.tar                # lister contenu
+
+# Tar + Gzip
+tar -czvf archive.tar.gz dossier/   # creer compresse
+tar -xzvf archive.tar.gz            # extraire
+
+# Gzip seul
+gzip fichier.txt                    # compresser (remplace)
+gunzip fichier.txt.gz               # decompresser
+
+# Zip
+zip -r archive.zip dossier/
+unzip archive.zip
+```
+
+### Pipes et redirections
+
+```bash
+# Pipe (|) - sortie d'une commande vers l'entree d'une autre
+ps aux | grep nginx
+cat fichier.txt | sort | uniq
+
+# Redirection sortie
+echo "hello" > fichier.txt          # ecraser
+echo "world" >> fichier.txt         # ajouter
+
+# Redirection erreur
+command 2> errors.log               # erreurs vers fichier
+command 2>&1                        # erreurs vers stdout
+command > output.log 2>&1           # tout vers fichier
+command &> output.log               # raccourci (bash)
+
+# Redirection entree
+command < input.txt
+mysql < dump.sql
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Navigation
+
+```bash
+# 1. Aller dans /var/log
+cd /var/log
+
+# 2. Lister tous les fichiers avec details
+ls -la
+
+# 3. Trouver les 5 plus gros fichiers
+ls -lhS | head -6
+
+# 4. Voir les dernieres lignes de syslog
+tail -20 syslog
+```
+
+### Exercice 2: Manipulation fichiers
+
+```bash
+# 1. Creer une structure
+mkdir -p ~/test/{src,docs,config}
+
+# 2. Creer des fichiers
+touch ~/test/src/app.py
+touch ~/test/docs/README.md
+touch ~/test/config/settings.conf
+
+# 3. Voir la structure
+tree ~/test
+
+# 4. Copier un fichier
+cp ~/test/config/settings.conf ~/test/config/settings.bak
+
+# 5. Nettoyer
+rm -rf ~/test
+```
+
+### Exercice 3: Recherche
+
+```bash
+# 1. Trouver tous les fichiers .conf dans /etc
+find /etc -name "*.conf" 2>/dev/null | head -20
+
+# 2. Chercher "error" dans les logs
+grep -r "error" /var/log/*.log 2>/dev/null | head -10
+
+# 3. Compter les lignes contenant "error"
+grep -c "error" /var/log/syslog
+```
+
+### Exercice 4: Processus
+
+```bash
+# 1. Lancer un processus en background
+sleep 100 &
+
+# 2. Voir les jobs
+jobs
+
+# 3. Voir dans ps
+ps aux | grep sleep
+
+# 4. Tuer le processus
+pkill sleep
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Script de monitoring systeme
+
+Creer un script qui affiche l'etat du systeme.
+
+```bash
+#!/bin/bash
+# system-status.sh
+
+echo "========================================"
+echo "        SYSTEM STATUS REPORT"
+echo "        $(date)"
+echo "========================================"
+
+echo ""
+echo "=== SYSTEM INFO ==="
+echo "Hostname: $(hostname)"
+echo "Uptime: $(uptime -p)"
+echo "Kernel: $(uname -r)"
+
+echo ""
+echo "=== MEMORY ==="
+free -h | grep -E "^Mem|^Swap"
+
+echo ""
+echo "=== DISK USAGE ==="
+df -h | grep -E "^/dev|^Filesystem"
+
+echo ""
+echo "=== TOP 5 PROCESSES BY CPU ==="
+ps aux --sort=-%cpu | head -6
+
+echo ""
+echo "=== TOP 5 PROCESSES BY MEMORY ==="
+ps aux --sort=-%mem | head -6
+
+echo ""
+echo "=== NETWORK ==="
+echo "IP Addresses:"
+ip -4 addr show | grep inet | awk '{print "  " $2}'
+
+echo ""
+echo "=== LISTENING PORTS ==="
+ss -tlnp | head -10
+
+echo ""
+echo "=== RECENT ERRORS (last 10) ==="
+grep -i error /var/log/syslog 2>/dev/null | tail -5 || echo "  No errors found"
+
+echo ""
+echo "========================================"
+```
+
+```bash
+# Sauvegarder et executer
+chmod +x system-status.sh
+./system-status.sh
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     LINUX BASICS                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  NAVIGATION                                                  │
+│  ──────────                                                  │
+│  pwd                    # ou suis-je                        │
+│  ls -la                 # lister tout                       │
+│  cd /path               # aller a                           │
+│  cd ..                  # parent                            │
+│  cd ~                   # home                              │
+│                                                              │
+│  FICHIERS                                                    │
+│  ────────                                                    │
+│  cat/less/more          # lire                              │
+│  head -n 20             # 20 premieres lignes               │
+│  tail -f                # suivre en temps reel              │
+│  cp/mv/rm               # copier/deplacer/supprimer         │
+│  mkdir -p               # creer avec parents                │
+│                                                              │
+│  RECHERCHE                                                   │
+│  ─────────                                                   │
+│  find . -name "*.log"   # trouver fichiers                  │
+│  grep -r "pattern" .    # chercher dans contenu             │
+│  grep -i                # ignore case                       │
+│  grep -v                # inverser                          │
+│                                                              │
+│  PERMISSIONS                                                 │
+│  ───────────                                                 │
+│  chmod 755 script.sh    # rwxr-xr-x                         │
+│  chmod 644 file.txt     # rw-r--r--                         │
+│  chown user:group file  # changer proprietaire              │
+│                                                              │
+│  PROCESSUS                                                   │
+│  ──────────                                                  │
+│  ps aux                 # lister                            │
+│  top/htop               # temps reel                        │
+│  kill PID               # terminer                          │
+│  kill -9 PID            # forcer                            │
+│                                                              │
+│  SERVICES                                                    │
+│  ────────                                                    │
+│  systemctl status svc   # status                            │
+│  systemctl start/stop   # demarrer/arreter                  │
+│  systemctl enable       # activer au boot                   │
+│  journalctl -u svc -f   # logs temps reel                   │
+│                                                              │
+│  RESEAU                                                      │
+│  ──────                                                      │
+│  ip addr                # interfaces                        │
+│  ss -tlnp               # ports ecoute                      │
+│  ping/curl              # test connectivite                 │
+│                                                              │
+│  PIPES & REDIRECTIONS                                        │
+│  ────────────────────                                        │
+│  cmd1 | cmd2            # pipe                              │
+│  cmd > file             # ecraser                           │
+│  cmd >> file            # ajouter                           │
+│  cmd 2>&1               # erreurs vers stdout               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **Comment voir l'espace disque utilise?**
+   → `df -h` pour les partitions, `du -sh /path` pour un dossier specifique.
+
+2. **Comment trouver un processus et le tuer?**
+   → `ps aux | grep nom` pour trouver, `kill PID` ou `pkill nom` pour tuer.
+
+3. **Difference entre hard link et soft link?**
+   → Hard link = meme inode, survit si original supprime. Soft link = pointeur, casse si original supprime.
+
+4. **Comment voir les logs en temps reel?**
+   → `tail -f /var/log/syslog` ou `journalctl -f` pour systemd.
+
+5. **C'est quoi chmod 755?**
+   → rwxr-xr-x = owner peut tout, group et others peuvent lire et executer.
+
+6. **Comment chercher un texte dans tous les fichiers?**
+   → `grep -r "pattern" /path/` ou `find /path -exec grep -l "pattern" {} \;`
+
+---
+
+## Sujets lies
+
+- **Apres:** [Shell Scripting](/devops/bash-scripting) - Automatiser avec Bash
+- **Apres:** [Git](/devops/git) - Versionner ton code
+- **Lie:** [SSH Tunnels](/networking/ssh-tunnels) - Se connecter aux serveurs
+
+---
+
+*Temps estime: 45 min lecture + 40 min pratique*

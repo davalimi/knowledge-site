@@ -1,0 +1,718 @@
+# Build Tools & Package Managers - Construire tes projets
+
+`[DEBUTANT]` - Temps: 45 min lecture + 30 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Chaque langage a ses outils pour:
+- Gerer les dependances (bibliotheques externes)
+- Compiler/builder le code
+- Packager l'application pour la deployer
+- Automatiser les taches repetitives
+
+En DevOps, tu dois connaitre ces outils pour creer des pipelines CI/CD efficaces.
+
+---
+
+## What - C'est quoi
+
+### Analogie: La cuisine
+
+Imagine que tu cuisines un gateau:
+- **Dependances** = Les ingredients (farine, oeufs, sucre)
+- **Package Manager** = Le supermarche qui te fournit les ingredients
+- **Build Tool** = Le four et le mixeur
+- **Artifact** = Le gateau fini, pret a manger
+
+### Les outils par langage
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    BUILD TOOLS PAR LANGAGE                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  JAVA                                                        │
+│  ────                                                        │
+│  Maven      → pom.xml (XML)                                 │
+│  Gradle     → build.gradle (Groovy/Kotlin)                  │
+│                                                              │
+│  JAVASCRIPT                                                  │
+│  ──────────                                                  │
+│  npm        → package.json                                  │
+│  yarn       → package.json + yarn.lock                      │
+│  pnpm       → package.json (plus rapide)                    │
+│                                                              │
+│  PYTHON                                                      │
+│  ──────                                                      │
+│  pip        → requirements.txt                              │
+│  poetry     → pyproject.toml                                │
+│  pipenv     → Pipfile                                       │
+│                                                              │
+│  GO                                                          │
+│  ──                                                          │
+│  go mod     → go.mod                                        │
+│                                                              │
+│  RUST                                                        │
+│  ────                                                        │
+│  cargo      → Cargo.toml                                    │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Maven (Java)
+
+#### Installation
+
+```bash
+# Ubuntu/Debian
+sudo apt install maven
+
+# macOS
+brew install maven
+
+# Verifier
+mvn --version
+```
+
+#### Structure d'un projet Maven
+
+```
+mon-projet/
+├── pom.xml                 # Configuration Maven
+├── src/
+│   ├── main/
+│   │   ├── java/          # Code source
+│   │   └── resources/     # Fichiers de config
+│   └── test/
+│       └── java/          # Tests
+└── target/                 # Build output (genere)
+```
+
+#### pom.xml basique
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Identite du projet -->
+    <groupId>com.example</groupId>
+    <artifactId>mon-app</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <!-- Proprietes -->
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+    </properties>
+
+    <!-- Dependances -->
+    <dependencies>
+        <!-- Spring Boot -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <version>3.2.0</version>
+        </dependency>
+
+        <!-- Tests -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.13.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- Build plugins -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+#### Commandes Maven
+
+```bash
+# Lifecycle principal
+mvn clean           # Nettoyer target/
+mvn compile         # Compiler le code
+mvn test            # Executer les tests
+mvn package         # Creer le JAR/WAR
+mvn install         # Installer dans le repo local
+mvn deploy          # Deployer vers un repo distant
+
+# Combinaisons courantes
+mvn clean package                    # Nettoyer et packager
+mvn clean install -DskipTests       # Sans les tests
+mvn clean package -P production     # Avec un profil
+
+# Autres commandes utiles
+mvn dependency:tree                  # Voir l'arbre des dependances
+mvn versions:display-dependency-updates  # Voir les MAJ disponibles
+mvn help:effective-pom              # POM complet avec heritage
+```
+
+#### Maven Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MAVEN LIFECYCLE                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  validate → compile → test → package → verify → install → deploy
+│                                                              │
+│  Chaque phase execute toutes les phases precedentes         │
+│                                                              │
+│  mvn package = validate + compile + test + package          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Gradle (Java moderne)
+
+#### Installation
+
+```bash
+# Via SDKMAN (recommande)
+curl -s "https://get.sdkman.io" | bash
+sdk install gradle
+
+# macOS
+brew install gradle
+
+# Verifier
+gradle --version
+```
+
+#### build.gradle (Groovy)
+
+```groovy
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = '17'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+```
+
+#### Commandes Gradle
+
+```bash
+# Commandes de base
+gradle build            # Compiler + tests + package
+gradle clean            # Nettoyer
+gradle test             # Executer les tests
+gradle bootRun          # Lancer l'app Spring Boot
+
+# Avec le wrapper (recommande)
+./gradlew build
+./gradlew clean build
+
+# Autres
+./gradlew dependencies  # Voir les dependances
+./gradlew tasks         # Lister les taches disponibles
+```
+
+### npm (JavaScript/Node.js)
+
+#### Installation
+
+```bash
+# Installer Node.js (inclut npm)
+# Via nvm (recommande)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install --lts
+
+# Verifier
+node --version
+npm --version
+```
+
+#### package.json
+
+```json
+{
+  "name": "mon-app",
+  "version": "1.0.0",
+  "description": "Mon application Node.js",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "build": "webpack --mode production",
+    "test": "jest",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "eslint": "^8.55.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+```
+
+#### Commandes npm
+
+```bash
+# Initialiser un projet
+npm init                    # Interactif
+npm init -y                 # Valeurs par defaut
+
+# Gerer les dependances
+npm install                 # Installer toutes les deps (depuis package.json)
+npm install express         # Ajouter une dependance
+npm install -D jest         # Ajouter une dev dependency
+npm install express@4.17.0  # Version specifique
+npm uninstall express       # Supprimer
+
+# Executer les scripts
+npm start                   # Lancer le script "start"
+npm run dev                 # Lancer un script custom
+npm test                    # Lancer les tests
+
+# Autres commandes
+npm outdated                # Voir les deps a mettre a jour
+npm update                  # Mettre a jour les deps
+npm audit                   # Verifier les vulnerabilites
+npm audit fix               # Corriger les vulns
+npm cache clean --force     # Nettoyer le cache
+
+# Publication
+npm login                   # Se connecter a npmjs.com
+npm publish                 # Publier le package
+```
+
+#### Versions semantiques
+
+```
+^4.18.2  →  4.x.x (minor + patch OK)
+~4.18.2  →  4.18.x (patch seulement)
+4.18.2   →  exactement 4.18.2
+>=4.0.0  →  4.0.0 ou plus
+*        →  n'importe quelle version
+```
+
+### pip (Python)
+
+#### Installation
+
+```bash
+# Python 3 inclut pip
+python3 --version
+pip3 --version
+
+# Ou avec alias
+python --version
+pip --version
+```
+
+#### requirements.txt
+
+```
+# Dependances principales
+flask==3.0.0
+requests>=2.28.0
+python-dotenv~=1.0.0
+
+# Base de donnees
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# Dev dependencies (souvent dans requirements-dev.txt)
+pytest>=7.0.0
+black>=23.0.0
+flake8>=6.0.0
+```
+
+#### Commandes pip
+
+```bash
+# Installer
+pip install flask                    # Une dependance
+pip install -r requirements.txt      # Depuis fichier
+pip install flask==3.0.0             # Version specifique
+pip install "flask>=3.0.0,<4.0.0"   # Range de versions
+
+# Environnement virtuel (TOUJOURS utiliser)
+python -m venv venv                  # Creer
+source venv/bin/activate             # Activer (Linux/Mac)
+venv\Scripts\activate                # Activer (Windows)
+deactivate                           # Desactiver
+
+# Gestion
+pip list                             # Lister les packages installes
+pip freeze > requirements.txt        # Exporter les deps
+pip show flask                       # Info sur un package
+pip uninstall flask                  # Supprimer
+
+# Mise a jour
+pip install --upgrade flask          # Mettre a jour
+pip list --outdated                  # Voir les MAJ disponibles
+```
+
+#### Poetry (moderne, recommande)
+
+```bash
+# Installation
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Nouveau projet
+poetry new mon-projet
+cd mon-projet
+
+# Ou initialiser dans un projet existant
+poetry init
+
+# Gerer les deps
+poetry add flask                     # Ajouter
+poetry add --group dev pytest        # Dev dependency
+poetry remove flask                  # Supprimer
+
+# Executer
+poetry install                       # Installer les deps
+poetry run python app.py             # Executer avec l'env
+poetry shell                         # Activer le shell
+
+# Build
+poetry build                         # Creer le package
+poetry publish                       # Publier sur PyPI
+```
+
+#### pyproject.toml (Poetry)
+
+```toml
+[tool.poetry]
+name = "mon-app"
+version = "1.0.0"
+description = "Mon application Python"
+authors = ["Ton Nom <ton@email.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+flask = "^3.0.0"
+requests = "^2.28.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+black = "^23.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+```
+
+---
+
+## Comparaison des outils
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    COMPARAISON                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  MAVEN vs GRADLE                                             │
+│  ──────────────                                              │
+│  Maven:  XML verbose, convention stricte, plus stable       │
+│  Gradle: DSL concis, flexible, plus rapide, moderne         │
+│                                                              │
+│  NPM vs YARN vs PNPM                                         │
+│  ──────────────────                                          │
+│  npm:   Standard, le plus utilise                           │
+│  yarn:  Plus rapide, lockfile deterministe                  │
+│  pnpm:  Tres rapide, economise l'espace disque              │
+│                                                              │
+│  PIP vs POETRY                                               │
+│  ─────────────                                               │
+│  pip:    Simple, standard, pas de lockfile natif            │
+│  poetry: Moderne, lockfile, meilleure gestion des deps      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Projet npm
+
+```bash
+# 1. Creer un projet
+mkdir my-node-app && cd my-node-app
+npm init -y
+
+# 2. Ajouter Express
+npm install express
+
+# 3. Creer index.js
+cat > index.js << 'EOF'
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.json({ message: 'Hello World!' });
+});
+
+app.listen(3000, () => {
+  console.log('Server running on port 3000');
+});
+EOF
+
+# 4. Ajouter un script dans package.json
+# "scripts": { "start": "node index.js" }
+
+# 5. Lancer
+npm start
+```
+
+### Exercice 2: Projet Python avec venv
+
+```bash
+# 1. Creer le projet
+mkdir my-python-app && cd my-python-app
+
+# 2. Creer l'environnement virtuel
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Installer Flask
+pip install flask
+
+# 4. Sauvegarder les deps
+pip freeze > requirements.txt
+
+# 5. Creer app.py
+cat > app.py << 'EOF'
+from flask import Flask, jsonify
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return jsonify(message='Hello World!')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+EOF
+
+# 6. Lancer
+python app.py
+```
+
+### Exercice 3: Comprendre les dependances
+
+```bash
+# npm - voir l'arbre
+npm ls
+npm ls --all          # Toutes les deps transitives
+
+# Maven
+mvn dependency:tree
+
+# pip
+pip show flask        # Voir les deps de flask
+pipdeptree            # Arbre complet (pip install pipdeptree)
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Application multi-langage
+
+```bash
+# === Structure ===
+my-fullstack-app/
+├── backend/          # Python Flask
+│   ├── venv/
+│   ├── requirements.txt
+│   └── app.py
+├── frontend/         # Node.js
+│   ├── node_modules/
+│   ├── package.json
+│   └── src/
+└── docker-compose.yml
+
+# === Backend Python ===
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+
+cat > requirements.txt << 'EOF'
+flask==3.0.0
+flask-cors==4.0.0
+gunicorn==21.2.0
+EOF
+
+pip install -r requirements.txt
+
+cat > app.py << 'EOF'
+from flask import Flask, jsonify
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+
+@app.route('/api/health')
+def health():
+    return jsonify(status='healthy')
+
+@app.route('/api/data')
+def data():
+    return jsonify(items=['item1', 'item2', 'item3'])
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+EOF
+
+# === Frontend Node.js ===
+cd ../frontend
+npm init -y
+npm install express axios
+
+cat > index.js << 'EOF'
+const express = require('express');
+const axios = require('axios');
+const app = express();
+
+app.get('/', async (req, res) => {
+  try {
+    const response = await axios.get('http://localhost:5000/api/data');
+    res.json({
+      message: 'Frontend OK',
+      backendData: response.data
+    });
+  } catch (error) {
+    res.json({ error: 'Backend unreachable' });
+  }
+});
+
+app.listen(3000, () => console.log('Frontend on port 3000'));
+EOF
+
+# === Lancer les deux ===
+# Terminal 1:
+cd backend && source venv/bin/activate && python app.py
+
+# Terminal 2:
+cd frontend && npm start
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      BUILD TOOLS                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  MAVEN                                                       │
+│  ─────                                                       │
+│  mvn clean package          # Build                         │
+│  mvn install               # Install local                  │
+│  mvn dependency:tree       # Voir deps                      │
+│  mvn -DskipTests package   # Sans tests                     │
+│                                                              │
+│  GRADLE                                                      │
+│  ──────                                                      │
+│  ./gradlew build           # Build                          │
+│  ./gradlew clean           # Nettoyer                       │
+│  ./gradlew dependencies    # Voir deps                      │
+│                                                              │
+│  NPM                                                         │
+│  ───                                                         │
+│  npm install               # Installer deps                 │
+│  npm install pkg           # Ajouter package                │
+│  npm run script            # Executer script                │
+│  npm audit                 # Check securite                 │
+│                                                              │
+│  PIP                                                         │
+│  ───                                                         │
+│  python -m venv venv       # Creer env virtuel              │
+│  source venv/bin/activate  # Activer                        │
+│  pip install -r req.txt    # Installer deps                 │
+│  pip freeze > req.txt      # Exporter deps                  │
+│                                                              │
+│  POETRY                                                      │
+│  ──────                                                      │
+│  poetry install            # Installer                      │
+│  poetry add pkg            # Ajouter                        │
+│  poetry run python app.py  # Executer                       │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi la difference entre dependencies et devDependencies?**
+   → dependencies: necessaires en production. devDependencies: seulement pour le dev (tests, linting, build).
+
+2. **Pourquoi utiliser un lockfile (package-lock.json, poetry.lock)?**
+   → Garantir que tout le monde installe exactement les memes versions. Builds reproductibles.
+
+3. **C'est quoi un environnement virtuel Python?**
+   → Isolation des dependances par projet. Evite les conflits entre projets qui utilisent des versions differentes.
+
+4. **Maven: difference entre compile, provided et test scope?**
+   → compile: inclus partout. provided: fourni par le runtime (ex: servlet-api). test: seulement pour les tests.
+
+5. **Comment gerer les vulnerabilites dans les deps?**
+   → npm audit, pip-audit, Dependabot, Snyk. Mettre a jour regulierement.
+
+6. **C'est quoi un artifact?**
+   → Le resultat final du build: JAR, WAR, bundle JS, wheel Python. Ce qu'on deploie.
+
+---
+
+## Sujets lies
+
+- **Avant:** [Git](/devops/git) - Versionner ton code
+- **Apres:** [Artifact Repository](/devops/nexus) - Stocker tes artifacts
+- **Apres:** [Docker](/devops/docker) - Containeriser ton app
+- **Lie:** [CI/CD](/devops/jenkins) - Automatiser le build
+
+---
+
+*Temps estime: 45 min lecture + 30 min pratique*

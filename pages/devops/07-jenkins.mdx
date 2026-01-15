@@ -1,0 +1,911 @@
+# Jenkins - CI/CD Pipeline
+
+`[DEBUTANT]` - Temps: 50 min lecture + 40 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+CI/CD c'est le coeur du DevOps. C'est l'automatisation de tout ce qui se passe entre le commit et la production.
+
+**Sans CI/CD:**
+- Tests manuels oublies
+- Deployments stressants
+- Bugs en production
+- "Ca marchait sur ma machine"
+
+**Avec Jenkins:**
+- Build automatique a chaque commit
+- Tests obligatoires
+- Deployment automatise
+- Feedback rapide
+
+Jenkins est le serveur CI/CD le plus utilise. Il existe depuis 2011 et a une enorme communaute.
+
+---
+
+## What - C'est quoi
+
+### Analogie: La chaine de montage
+
+Une usine automobile a une chaine de montage automatisee:
+1. Les pieces arrivent (code)
+2. Assemblage automatique (build)
+3. Tests qualite (tests)
+4. Peinture et finitions (package)
+5. Livraison au client (deploy)
+
+Jenkins c'est cette chaine pour ton logiciel.
+
+### CI vs CD
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CI / CD                                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  CI - Continuous Integration                                 │
+│  ───────────────────────────                                 │
+│  - Integrer le code frequemment                             │
+│  - Builder a chaque commit                                  │
+│  - Tests automatiques                                       │
+│  - Detecter les problemes tot                               │
+│                                                              │
+│  CD - Continuous Delivery                                    │
+│  ────────────────────────                                    │
+│  - Code toujours deployable                                 │
+│  - Deployment en staging auto                               │
+│  - Deployment en prod = un bouton                           │
+│                                                              │
+│  CD - Continuous Deployment                                  │
+│  ─────────────────────────                                   │
+│  - Deployment en prod automatique                           │
+│  - Zero intervention humaine                                │
+│  - Chaque commit va en prod (si tests OK)                   │
+│                                                              │
+│  ┌─────┐   ┌───────┐   ┌──────┐   ┌─────────┐   ┌──────┐  │
+│  │Code │ → │ Build │ → │ Test │ → │ Package │ → │Deploy│  │
+│  └─────┘   └───────┘   └──────┘   └─────────┘   └──────┘  │
+│  └───────────── CI ──────────────┘                         │
+│  └──────────────────── CD ────────────────────────────────┘ │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Concepts Jenkins
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CONCEPTS JENKINS                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  MASTER (Controller)                                         │
+│  ──────────────────                                          │
+│  - Interface web                                            │
+│  - Orchestration des jobs                                   │
+│  - Stockage de la config                                    │
+│                                                              │
+│  AGENTS (Workers)                                            │
+│  ───────────────                                             │
+│  - Executent les builds                                     │
+│  - Peuvent etre sur differentes machines                    │
+│  - Labels pour cibler (linux, docker, etc)                  │
+│                                                              │
+│  JOB / PROJECT                                               │
+│  ─────────────                                               │
+│  - Unite de travail                                         │
+│  - Freestyle (UI) ou Pipeline (code)                        │
+│                                                              │
+│  PIPELINE                                                    │
+│  ────────                                                    │
+│  - Job defini en code (Jenkinsfile)                         │
+│  - Versionne avec le repo                                   │
+│  - Stages, steps, parallel                                  │
+│                                                              │
+│  BUILD                                                       │
+│  ─────                                                       │
+│  - Execution d'un job                                       │
+│  - Numero incremental (#1, #2, #3...)                       │
+│  - Status: Success, Failure, Unstable                       │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Installation avec Docker
+
+```bash
+# Lancer Jenkins
+docker run -d \
+  --name jenkins \
+  -p 8080:8080 \
+  -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  jenkins/jenkins:lts
+
+# Recuperer le mot de passe initial
+docker logs jenkins 2>&1 | grep -A 2 "initial"
+# Ou:
+docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+**Premier setup:**
+1. http://localhost:8080
+2. Coller le mot de passe initial
+3. Install suggested plugins
+4. Creer un admin user
+5. Configurer l'URL Jenkins
+
+### Creer un job Freestyle
+
+1. New Item → Freestyle project
+2. Configuration:
+   - **Source Code Management:** Git URL
+   - **Build Triggers:** Poll SCM (H/5 * * * *)
+   - **Build Steps:** Execute shell
+
+```bash
+# Build step exemple
+echo "Building..."
+npm install
+npm test
+npm run build
+```
+
+### Pipeline (la bonne methode)
+
+#### Jenkinsfile basique
+
+```groovy
+pipeline {
+    agent any
+
+    stages {
+        stage('Build') {
+            steps {
+                echo 'Building...'
+                sh 'npm install'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Testing...'
+                sh 'npm test'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying...'
+                sh 'npm run build'
+            }
+        }
+    }
+}
+```
+
+#### Pipeline avec Docker
+
+```groovy
+pipeline {
+    agent {
+        docker {
+            image 'node:20'
+        }
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                sh 'node --version'
+                sh 'npm install'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'npm test'
+            }
+        }
+    }
+}
+```
+
+#### Pipeline complet
+
+```groovy
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'myapp'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        REGISTRY = 'docker.io/myuser'
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'npm ci'
+            }
+        }
+
+        stage('Test') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        sh 'npm run test:unit'
+                    }
+                }
+                stage('Integration Tests') {
+                    steps {
+                        sh 'npm run test:integration'
+                    }
+                }
+                stage('Lint') {
+                    steps {
+                        sh 'npm run lint'
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t ${REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                sh "docker tag ${REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG} ${REGISTRY}/${DOCKER_IMAGE}:latest"
+            }
+        }
+
+        stage('Push to Registry') {
+            when {
+                branch 'main'
+            }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-hub',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                    sh "docker push ${REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}"
+                    sh "docker push ${REGISTRY}/${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh '''
+                    ssh user@staging "
+                        docker pull ${REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker-compose up -d
+                    "
+                '''
+            }
+        }
+
+        stage('Deploy to Production') {
+            when {
+                branch 'main'
+            }
+            input {
+                message 'Deploy to production?'
+                ok 'Deploy'
+            }
+            steps {
+                sh '''
+                    ssh user@production "
+                        docker pull ${REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker-compose up -d
+                    "
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            slackSend(color: 'good', message: "Build #${BUILD_NUMBER} succeeded!")
+        }
+        failure {
+            slackSend(color: 'danger', message: "Build #${BUILD_NUMBER} failed!")
+        }
+    }
+}
+```
+
+### Syntaxe Pipeline
+
+```groovy
+// === AGENT ===
+agent any                            // N'importe quel agent
+agent none                           // Pas d'agent global
+agent { label 'linux' }              // Agent avec label
+agent { docker { image 'node:20' } } // Container Docker
+
+// === STAGES ===
+stages {
+    stage('Name') {
+        steps {
+            // Commandes
+        }
+    }
+}
+
+// === STEPS ===
+steps {
+    sh 'command'                     // Shell
+    bat 'command'                    // Windows
+    echo 'message'                   // Print
+    script { /* groovy */ }          // Code Groovy
+}
+
+// === ENVIRONMENT ===
+environment {
+    VAR = 'value'
+    SECRET = credentials('cred-id')  // Secret
+}
+
+// === WHEN (conditions) ===
+when {
+    branch 'main'                    // Seulement sur main
+    expression { env.VAR == 'x' }    // Condition custom
+    not { branch 'dev' }             // Sauf dev
+    allOf { branch 'main'; environment name: 'DEPLOY', value: 'true' }
+}
+
+// === PARALLEL ===
+parallel {
+    stage('A') { steps { sh 'a' } }
+    stage('B') { steps { sh 'b' } }
+}
+
+// === POST ===
+post {
+    always { /* toujours */ }
+    success { /* si success */ }
+    failure { /* si echec */ }
+    unstable { /* si tests fail */ }
+}
+
+// === INPUT (approbation manuelle) ===
+input {
+    message 'Deploy?'
+    ok 'Yes'
+    submitter 'admin'
+}
+
+// === OPTIONS ===
+options {
+    timeout(time: 1, unit: 'HOURS')
+    retry(3)
+    disableConcurrentBuilds()
+}
+```
+
+### Credentials
+
+```groovy
+// Configurer dans: Manage Jenkins → Credentials
+
+// Utiliser dans le pipeline:
+withCredentials([
+    // Username/Password
+    usernamePassword(
+        credentialsId: 'my-creds',
+        usernameVariable: 'USER',
+        passwordVariable: 'PASS'
+    ),
+    // Secret text
+    string(
+        credentialsId: 'api-key',
+        variable: 'API_KEY'
+    ),
+    // SSH Key
+    sshUserPrivateKey(
+        credentialsId: 'ssh-key',
+        keyFileVariable: 'SSH_KEY'
+    )
+]) {
+    sh 'echo $USER'
+    sh 'curl -H "Authorization: Bearer $API_KEY" ...'
+}
+```
+
+### Triggers
+
+```groovy
+// Dans le Jenkinsfile
+triggers {
+    // Poll SCM (verifier toutes les 5 min)
+    pollSCM('H/5 * * * *')
+
+    // Webhook (GitHub/GitLab push)
+    // Configure dans le plugin GitHub
+
+    // Cron (scheduled)
+    cron('H 2 * * *')  // Chaque nuit a 2h
+
+    // Upstream (apres un autre job)
+    upstream(upstreamProjects: 'other-job', threshold: hudson.model.Result.SUCCESS)
+}
+```
+
+### Shared Libraries
+
+```groovy
+// Dans un repo Git: vars/buildApp.groovy
+def call(Map config) {
+    pipeline {
+        agent any
+        stages {
+            stage('Build') {
+                steps {
+                    sh "npm install"
+                    sh "npm run build"
+                }
+            }
+        }
+    }
+}
+
+// Utilisation dans Jenkinsfile:
+@Library('my-shared-lib') _
+buildApp(appName: 'myapp')
+```
+
+---
+
+## Plugins essentiels
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PLUGINS JENKINS                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Pipeline                                                    │
+│  - Pipeline: Core                                           │
+│  - Pipeline: Stage View                                     │
+│  - Blue Ocean (UI moderne)                                  │
+│                                                              │
+│  Git                                                         │
+│  - Git                                                       │
+│  - GitHub Integration                                       │
+│  - GitLab                                                    │
+│                                                              │
+│  Docker                                                      │
+│  - Docker Pipeline                                          │
+│  - Docker                                                    │
+│                                                              │
+│  Credentials                                                 │
+│  - Credentials Binding                                      │
+│  - SSH Credentials                                          │
+│                                                              │
+│  Notifications                                               │
+│  - Slack Notification                                       │
+│  - Email Extension                                          │
+│                                                              │
+│  Quality                                                     │
+│  - JUnit                                                     │
+│  - Cobertura (coverage)                                     │
+│  - SonarQube Scanner                                        │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Premier Pipeline
+
+```bash
+# 1. Creer un repo Git avec un Jenkinsfile
+mkdir jenkins-demo && cd jenkins-demo
+git init
+
+cat > Jenkinsfile << 'EOF'
+pipeline {
+    agent any
+    stages {
+        stage('Hello') {
+            steps {
+                echo 'Hello Jenkins!'
+                sh 'date'
+                sh 'whoami'
+            }
+        }
+    }
+}
+EOF
+
+cat > README.md << 'EOF'
+# Jenkins Demo
+EOF
+
+git add .
+git commit -m "Initial commit"
+
+# 2. Dans Jenkins:
+# - New Item → Pipeline
+# - Pipeline script from SCM
+# - Git URL: ton repo
+# - Build Now
+```
+
+### Exercice 2: Pipeline Node.js
+
+```bash
+# 1. Creer une app Node.js
+mkdir node-pipeline && cd node-pipeline
+
+cat > package.json << 'EOF'
+{
+  "name": "jenkins-node-demo",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "echo 'Tests passed!'",
+    "build": "echo 'Build done!'"
+  }
+}
+EOF
+
+cat > Jenkinsfile << 'EOF'
+pipeline {
+    agent {
+        docker {
+            image 'node:20-alpine'
+        }
+    }
+
+    stages {
+        stage('Install') {
+            steps {
+                sh 'npm --version'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'npm test'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'npm run build'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline succeeded!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}
+EOF
+
+git init && git add . && git commit -m "Node.js pipeline"
+```
+
+### Exercice 3: Pipeline avec Docker Build
+
+```bash
+cat > Jenkinsfile << 'EOF'
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = 'myapp'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Build Image') {
+            steps {
+                sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
+            }
+        }
+
+        stage('Test Image') {
+            steps {
+                sh 'docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} echo "Container works!"'
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                sh 'docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true'
+            }
+        }
+    }
+}
+EOF
+
+cat > Dockerfile << 'EOF'
+FROM alpine:latest
+CMD ["echo", "Hello from Docker!"]
+EOF
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Pipeline CI/CD complet
+
+```groovy
+// Jenkinsfile complet pour une app Node.js
+
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = 'localhost:5000'
+        APP_NAME = 'mywebapp'
+        DOCKER_IMAGE = "${DOCKER_REGISTRY}/${APP_NAME}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+                    env.IMAGE_TAG = "${BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
+                }
+                echo "Building ${APP_NAME}:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Install Dependencies') {
+            agent {
+                docker { image 'node:20' }
+            }
+            steps {
+                sh 'npm ci'
+                stash includes: 'node_modules/**', name: 'node_modules'
+            }
+        }
+
+        stage('Quality Checks') {
+            parallel {
+                stage('Lint') {
+                    agent {
+                        docker { image 'node:20' }
+                    }
+                    steps {
+                        unstash 'node_modules'
+                        sh 'npm run lint || true'
+                    }
+                }
+
+                stage('Unit Tests') {
+                    agent {
+                        docker { image 'node:20' }
+                    }
+                    steps {
+                        unstash 'node_modules'
+                        sh 'npm run test:unit'
+                    }
+                    post {
+                        always {
+                            junit 'test-results/*.xml'
+                        }
+                    }
+                }
+
+                stage('Security Scan') {
+                    agent {
+                        docker { image 'node:20' }
+                    }
+                    steps {
+                        unstash 'node_modules'
+                        sh 'npm audit --audit-level=high || true'
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh """
+                    docker build \
+                      --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
+                      --build-arg GIT_COMMIT=${GIT_COMMIT_SHORT} \
+                      -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
+                      -t ${DOCKER_IMAGE}:latest \
+                      .
+                """
+            }
+        }
+
+        stage('Push to Registry') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                sh """
+                    docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+                    docker push ${DOCKER_IMAGE}:latest
+                """
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                echo 'Deploying to staging...'
+                sh """
+                    docker-compose -f docker-compose.staging.yml pull
+                    docker-compose -f docker-compose.staging.yml up -d
+                """
+            }
+        }
+
+        stage('Deploy to Production') {
+            when {
+                branch 'main'
+            }
+            input {
+                message 'Deploy to production?'
+                ok 'Deploy'
+                submitter 'admin,devops'
+            }
+            steps {
+                echo 'Deploying to production...'
+                sh """
+                    docker-compose -f docker-compose.prod.yml pull
+                    docker-compose -f docker-compose.prod.yml up -d
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker system prune -f || true'
+            cleanWs()
+        }
+        success {
+            echo "Build ${BUILD_NUMBER} succeeded!"
+            // slackSend(color: 'good', message: "✅ ${APP_NAME} #${BUILD_NUMBER} deployed!")
+        }
+        failure {
+            echo "Build ${BUILD_NUMBER} failed!"
+            // slackSend(color: 'danger', message: "❌ ${APP_NAME} #${BUILD_NUMBER} failed!")
+        }
+    }
+}
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        JENKINS                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  INSTALLATION                                                │
+│  ────────────                                                │
+│  docker run -d -p 8080:8080 -v jenkins:/var/jenkins_home \  │
+│    jenkins/jenkins:lts                                      │
+│                                                              │
+│  PIPELINE STRUCTURE                                          │
+│  ──────────────────                                          │
+│  pipeline {                                                  │
+│    agent any                                                │
+│    stages {                                                 │
+│      stage('Build') {                                       │
+│        steps { sh 'npm build' }                             │
+│      }                                                       │
+│    }                                                         │
+│    post { always { cleanWs() } }                            │
+│  }                                                           │
+│                                                              │
+│  AGENT                                                       │
+│  ─────                                                       │
+│  agent any                         # N'importe lequel       │
+│  agent { label 'linux' }           # Par label              │
+│  agent { docker { image 'node' } } # Dans Docker            │
+│                                                              │
+│  CONDITIONS (when)                                           │
+│  ─────────────────                                           │
+│  when { branch 'main' }            # Seulement main         │
+│  when { expression { x == y } }    # Custom                 │
+│                                                              │
+│  CREDENTIALS                                                 │
+│  ───────────                                                 │
+│  withCredentials([usernamePassword(...)]) { }               │
+│  withCredentials([string(credentialsId: 'x', var: 'Y')]) { }│
+│                                                              │
+│  TRIGGERS                                                    │
+│  ────────                                                    │
+│  triggers { pollSCM('H/5 * * * *') }  # Poll Git           │
+│  triggers { cron('H 2 * * *') }       # Schedule            │
+│                                                              │
+│  POST ACTIONS                                                │
+│  ────────────                                                │
+│  post { always { } success { } failure { } }                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi la difference entre CI et CD?**
+   → CI: integration continue, build et tests auto a chaque commit. CD: livraison continue, code toujours deployable. Continuous Deployment: deploy auto en prod.
+
+2. **Pourquoi utiliser Pipeline au lieu de Freestyle?**
+   → Pipeline est du code (Jenkinsfile), versionne avec le repo, plus flexible, supporte les stages complexes et paralleles.
+
+3. **C'est quoi un agent Jenkins?**
+   → Machine qui execute les builds. Le master orchestre, les agents executent. Permet de distribuer la charge et d'avoir differents environnements.
+
+4. **Comment gerer les secrets dans Jenkins?**
+   → Credentials plugin, stockes de facon securisee, utilises via withCredentials() dans le pipeline.
+
+5. **Comment paralleliser un pipeline?**
+   → Utiliser le bloc parallel{} pour executer plusieurs stages en meme temps.
+
+6. **Alternatives a Jenkins?**
+   → GitLab CI, GitHub Actions, CircleCI, Travis CI, Azure DevOps. Jenkins reste le plus flexible mais plus complexe.
+
+---
+
+## Sujets lies
+
+- **Avant:** [Docker](/devops/docker) - Builds dans des containers
+- **Avant:** [Nexus](/devops/nexus) - Publier les artifacts
+- **Apres:** [AWS](/devops/aws) - Deployer vers le cloud
+- **Apres:** [Kubernetes](/devops/kubernetes) - Deployer des containers
+
+---
+
+*Temps estime: 50 min lecture + 40 min pratique*

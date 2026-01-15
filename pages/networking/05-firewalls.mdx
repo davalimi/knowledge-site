@@ -1,0 +1,556 @@
+# Firewalls - Le videur de ton reseau
+
+`[DEBUTANT]` - Temps: 40 min lecture + 30 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Sans firewall, ton serveur c'est une maison avec toutes les portes ouvertes. N'importe qui peut entrer. Le firewall decide qui peut entrer, par quelle porte, et ce qu'il peut faire une fois a l'interieur.
+
+En tant que DevOps, tu vas configurer des firewalls tous les jours:
+- Ouvrir le port 443 pour HTTPS
+- Bloquer tout sauf SSH depuis ton IP
+- Isoler des reseaux entre eux
+- Debugger "pourquoi mon app marche pas" (spoiler: c'est souvent le firewall)
+
+---
+
+## What - C'est quoi
+
+### Analogie: Le videur de boite de nuit
+
+**Firewall = Videur a l'entree**
+- Il a une liste de regles (dress code, liste VIP, age minimum)
+- Il check chaque personne qui veut entrer
+- Il decide: tu rentres ou tu degages
+- Il peut aussi controler ceux qui sortent
+
+### Types de firewalls
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TYPES DE FIREWALLS                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. PACKET FILTER (Layer 3-4)                               │
+│     - Check IP source/dest, port, protocole                 │
+│     - Rapide mais basique                                   │
+│     - Ex: iptables, nftables                                │
+│                                                              │
+│  2. STATEFUL (Layer 3-4)                                    │
+│     - Se souvient des connexions etablies                   │
+│     - Plus intelligent que packet filter                    │
+│     - Ex: iptables avec conntrack                           │
+│                                                              │
+│  3. APPLICATION (Layer 7)                                   │
+│     - Comprend le contenu (HTTP, DNS, etc)                  │
+│     - Peut bloquer des URLs specifiques                     │
+│     - Ex: WAF, nginx avec rules                             │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Comment ca marche
+
+```
+Paquet arrive
+     │
+     ▼
+┌─────────────┐
+│  Firewall   │
+│             │
+│  Regle 1?   │──Yes──▶ ACCEPT/DROP
+│     │       │
+│     No      │
+│     ▼       │
+│  Regle 2?   │──Yes──▶ ACCEPT/DROP
+│     │       │
+│     No      │
+│     ▼       │
+│  Regle 3?   │──Yes──▶ ACCEPT/DROP
+│     │       │
+│     No      │
+│     ▼       │
+│  Default    │──────▶ DROP (deny all)
+└─────────────┘
+```
+
+**Principe de base:** Tout est bloque par defaut, tu ouvres ce dont tu as besoin.
+
+---
+
+## Les chaines iptables
+
+### Les 3 chaines principales
+
+```
+                    ┌─────────────────┐
+   Paquet entrant   │                 │   Paquet sortant
+─────────────────▶  │    SERVEUR      │  ────────────────▶
+                    │                 │
+                    └─────────────────┘
+
+     INPUT              FORWARD            OUTPUT
+  (vers le serveur)  (traverse le      (depuis le serveur)
+                      serveur)
+```
+
+- **INPUT:** Paquets destines a CE serveur
+- **OUTPUT:** Paquets generes PAR ce serveur
+- **FORWARD:** Paquets qui traversent (routeur)
+
+### Les actions (targets)
+
+| Action | Description |
+|--------|-------------|
+| ACCEPT | Laisser passer |
+| DROP | Jeter silencieusement |
+| REJECT | Refuser avec message d'erreur |
+| LOG | Logger puis continuer |
+
+---
+
+## How - En pratique
+
+### iptables - Le classique Linux
+
+```bash
+# Voir les regles actuelles
+sudo iptables -L -n -v
+
+# Voir avec numeros de ligne
+sudo iptables -L --line-numbers
+
+# Voir les regles NAT
+sudo iptables -t nat -L -n -v
+```
+
+### Regles de base
+
+```bash
+# Autoriser tout le trafic loopback (localhost)
+sudo iptables -A INPUT -i lo -j ACCEPT
+
+# Autoriser les connexions etablies
+sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Autoriser SSH (port 22)
+sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+
+# Autoriser HTTP et HTTPS
+sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+# Bloquer tout le reste (a mettre en dernier!)
+sudo iptables -A INPUT -j DROP
+```
+
+### Syntaxe iptables
+
+```bash
+iptables -A INPUT -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
+         │   │     │       │         │                  │
+         │   │     │       │         │                  └─ Action
+         │   │     │       │         └─ Source IP/reseau
+         │   │     │       └─ Port destination
+         │   │     └─ Protocole (tcp/udp/icmp)
+         │   └─ Chaine (INPUT/OUTPUT/FORWARD)
+         └─ Append (ajouter a la fin)
+
+Options courantes:
+-A  Append (ajouter)
+-I  Insert (inserer au debut)
+-D  Delete (supprimer)
+-p  Protocole
+-s  Source
+-d  Destination
+--dport  Port destination
+--sport  Port source
+-j  Jump (action)
+-i  Interface entrante
+-o  Interface sortante
+```
+
+### Exemples pratiques
+
+```bash
+# Autoriser SSH uniquement depuis une IP specifique
+sudo iptables -A INPUT -p tcp --dport 22 -s 203.0.113.50 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 22 -j DROP
+
+# Autoriser ping (ICMP)
+sudo iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
+
+# Limiter les connexions SSH (anti brute-force)
+sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW -m recent --set
+sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW -m recent --update --seconds 60 --hitcount 4 -j DROP
+
+# Logger les paquets droppes
+sudo iptables -A INPUT -j LOG --log-prefix "DROPPED: "
+sudo iptables -A INPUT -j DROP
+```
+
+### Sauvegarder les regles
+
+```bash
+# Debian/Ubuntu
+sudo iptables-save > /etc/iptables/rules.v4
+sudo ip6tables-save > /etc/iptables/rules.v6
+
+# Restaurer
+sudo iptables-restore < /etc/iptables/rules.v4
+
+# Pour persistance au reboot
+sudo apt install iptables-persistent
+```
+
+---
+
+## UFW - Le firewall simplifie
+
+UFW (Uncomplicated Firewall) = interface simple pour iptables.
+
+```bash
+# Installer
+sudo apt install ufw
+
+# Status
+sudo ufw status verbose
+
+# Activer/Desactiver
+sudo ufw enable
+sudo ufw disable
+
+# Regles de base
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Autoriser des services
+sudo ufw allow ssh          # ou: ufw allow 22
+sudo ufw allow http         # ou: ufw allow 80
+sudo ufw allow https        # ou: ufw allow 443
+
+# Autoriser depuis une IP
+sudo ufw allow from 192.168.1.100
+
+# Autoriser un port depuis une IP
+sudo ufw allow from 192.168.1.0/24 to any port 22
+
+# Supprimer une regle
+sudo ufw delete allow http
+
+# Reset complet
+sudo ufw reset
+```
+
+---
+
+## firewalld - Le firewall Red Hat
+
+Utilise sur CentOS, RHEL, Fedora.
+
+```bash
+# Status
+sudo firewall-cmd --state
+sudo firewall-cmd --list-all
+
+# Ajouter un service
+sudo firewall-cmd --add-service=http --permanent
+sudo firewall-cmd --add-service=https --permanent
+
+# Ajouter un port
+sudo firewall-cmd --add-port=8080/tcp --permanent
+
+# Recharger
+sudo firewall-cmd --reload
+
+# Zones
+sudo firewall-cmd --get-zones
+sudo firewall-cmd --get-default-zone
+sudo firewall-cmd --zone=public --list-all
+```
+
+---
+
+## Firewalls Cloud
+
+### AWS Security Groups
+
+```
+┌─────────────────────────────────────────┐
+│          Security Group                  │
+│                                          │
+│  Inbound Rules:                          │
+│  ┌────────┬────────┬─────────────────┐  │
+│  │ Type   │ Port   │ Source          │  │
+│  ├────────┼────────┼─────────────────┤  │
+│  │ SSH    │ 22     │ My IP           │  │
+│  │ HTTP   │ 80     │ 0.0.0.0/0       │  │
+│  │ HTTPS  │ 443    │ 0.0.0.0/0       │  │
+│  │ Custom │ 3000   │ sg-frontend     │  │
+│  └────────┴────────┴─────────────────┘  │
+│                                          │
+│  Outbound Rules:                         │
+│  │ All    │ All    │ 0.0.0.0/0       │  │
+│                                          │
+└─────────────────────────────────────────┘
+```
+
+**Caracteristiques AWS SG:**
+- Stateful (reponses auto-autorisees)
+- Pas de regles DENY (seulement ALLOW)
+- Applique au niveau instance
+
+### GCP Firewall Rules
+
+```bash
+# Creer une regle
+gcloud compute firewall-rules create allow-http \
+    --allow tcp:80 \
+    --source-ranges 0.0.0.0/0 \
+    --target-tags web-server
+
+# Lister
+gcloud compute firewall-rules list
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Configuration basique
+
+```bash
+# 1. Voir tes regles actuelles
+sudo iptables -L -n -v
+
+# 2. Creer un script de firewall basique
+cat > firewall.sh << 'EOF'
+#!/bin/bash
+# Reset
+iptables -F
+iptables -X
+
+# Policies par defaut
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
+
+# Loopback
+iptables -A INPUT -i lo -j ACCEPT
+
+# Connexions etablies
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# SSH
+iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+
+# HTTP/HTTPS
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+echo "Firewall configured!"
+EOF
+
+chmod +x firewall.sh
+```
+
+### Exercice 2: UFW
+
+```bash
+# 1. Installer et configurer UFW
+sudo ufw reset
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# 2. Autoriser les services necessaires
+sudo ufw allow ssh
+sudo ufw allow http
+sudo ufw allow https
+
+# 3. Autoriser un port custom
+sudo ufw allow 3000/tcp
+
+# 4. Verifier et activer
+sudo ufw status numbered
+sudo ufw enable
+```
+
+### Exercice 3: Debugging
+
+```bash
+# Un service ne repond pas - est-ce le firewall?
+
+# 1. Verifier si le port est ouvert localement
+ss -tlnp | grep :80
+
+# 2. Verifier les regles iptables
+sudo iptables -L -n -v | grep 80
+
+# 3. Tester depuis l'exterieur
+nc -zv ton-serveur.com 80
+
+# 4. Logger les paquets pour debug
+sudo iptables -I INPUT -p tcp --dport 80 -j LOG --log-prefix "HTTP: "
+sudo tail -f /var/log/syslog | grep HTTP
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Firewall pour serveur web
+
+Configure un firewall pour un serveur web typique:
+
+**Besoins:**
+- SSH accessible uniquement depuis ton IP
+- HTTP/HTTPS accessibles a tous
+- Port 3000 (app Node) accessible en interne uniquement
+- Ping autorise
+- Tout le reste bloque
+- Logs des tentatives bloquees
+
+```bash
+#!/bin/bash
+# firewall-webserver.sh
+
+# Variables
+MY_IP="203.0.113.50"  # Ton IP
+INTERNAL_NET="10.0.0.0/8"
+
+# Reset
+iptables -F
+iptables -X
+iptables -t nat -F
+
+# Default policies
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
+
+# Loopback
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+
+# Established connections
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# SSH from my IP only
+iptables -A INPUT -p tcp --dport 22 -s $MY_IP -j ACCEPT
+
+# HTTP/HTTPS from anywhere
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+# App port from internal network only
+iptables -A INPUT -p tcp --dport 3000 -s $INTERNAL_NET -j ACCEPT
+
+# ICMP (ping)
+iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
+
+# Log dropped packets
+iptables -A INPUT -j LOG --log-prefix "FIREWALL DROP: " --log-level 4
+
+# Drop everything else (implicit with policy, but explicit for clarity)
+iptables -A INPUT -j DROP
+
+echo "Firewall configured for web server"
+iptables -L -n -v
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      FIREWALL                                │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  IPTABLES                                                    │
+│  ─────────                                                   │
+│  iptables -L -n -v              # Voir les regles           │
+│  iptables -A INPUT ...          # Ajouter regle             │
+│  iptables -D INPUT 3            # Supprimer regle #3        │
+│  iptables -F                    # Flush (vider)             │
+│  iptables-save > rules          # Sauvegarder               │
+│  iptables-restore < rules       # Restaurer                 │
+│                                                              │
+│  SYNTAXE                                                     │
+│  ───────                                                     │
+│  -A INPUT/OUTPUT/FORWARD        # Chaine                    │
+│  -p tcp/udp/icmp                # Protocole                 │
+│  --dport 80                     # Port destination          │
+│  --sport 1024:                  # Port source               │
+│  -s 192.168.1.0/24              # Source                    │
+│  -d 10.0.0.1                    # Destination               │
+│  -j ACCEPT/DROP/REJECT/LOG      # Action                    │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  UFW (SIMPLE)                                                │
+│  ───────────                                                 │
+│  ufw status                     # Status                    │
+│  ufw enable/disable             # On/Off                    │
+│  ufw allow ssh                  # Autoriser SSH             │
+│  ufw allow 80/tcp               # Autoriser port            │
+│  ufw allow from 1.2.3.4         # Autoriser IP              │
+│  ufw delete allow 80            # Supprimer regle           │
+│  ufw reset                      # Reset complet             │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  FIREWALLD (RHEL/CENTOS)                                    │
+│  ───────────────────────                                     │
+│  firewall-cmd --list-all        # Voir config               │
+│  firewall-cmd --add-service=http --permanent                │
+│  firewall-cmd --add-port=8080/tcp --permanent               │
+│  firewall-cmd --reload          # Appliquer                 │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  DEBUGGING                                                   │
+│  ─────────                                                   │
+│  ss -tlnp                       # Ports en ecoute           │
+│  nc -zv host port               # Test connexion            │
+│  tcpdump -i eth0 port 80        # Capture paquets           │
+│  iptables -L -n -v | grep DROP  # Voir drops                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **Quelle est la difference entre DROP et REJECT?**
+   → DROP ignore silencieusement (l'attaquant ne sait pas si le port existe). REJECT envoie un message d'erreur (plus poli mais revele l'existence du firewall).
+
+2. **C'est quoi un firewall stateful?**
+   → Il se souvient des connexions etablies. Si tu inities une connexion sortante, les reponses entrantes sont auto-autorisees.
+
+3. **Pourquoi "default deny"?**
+   → Securite par defaut. Tu bloques tout et ouvres uniquement ce dont tu as besoin. L'inverse (default allow) laisse des failles.
+
+4. **Difference entre iptables et firewalld?**
+   → iptables = regles bas niveau, direct. firewalld = abstraction avec zones et services, plus simple mais moins flexible.
+
+5. **Comment debugger un probleme de firewall?**
+   → 1) Verifier si le service tourne localement (ss -tlnp), 2) Verifier les regles (iptables -L), 3) Logger les paquets, 4) Tester avec nc/telnet.
+
+6. **C'est quoi un Security Group AWS?**
+   → Firewall virtuel au niveau instance EC2. Stateful, regles ALLOW only, s'applique a l'instance pas au subnet.
+
+---
+
+## Sujets lies
+
+- **Avant:** [Routing](/networking/routing) - Comprendre le chemin des paquets
+- **Apres:** [VPN](/networking/vpn) - Tunnels securises qui traversent les firewalls
+- **Apres:** [SSH Tunnels](/networking/ssh-tunnels) - Port forwarding a travers SSH
+
+---
+
+*Temps estime: 40 min lecture + 30 min pratique*

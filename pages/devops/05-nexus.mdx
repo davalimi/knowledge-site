@@ -1,0 +1,628 @@
+# Nexus - Artifact Repository Manager
+
+`[DEBUTANT]` - Temps: 35 min lecture + 25 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Quand tu build ton application, tu crees des artifacts (JAR, Docker images, npm packages). Ou les stocker?
+
+**Sans artifact repository:**
+- Artifacts perdus apres le build
+- Pas de versionning
+- Pas de partage entre equipes
+- Rebuilds constants
+
+**Avec Nexus:**
+- Stockage centralise et versionne
+- Cache des dependances (plus rapide)
+- Controle d'acces
+- Audit et tracabilite
+
+---
+
+## What - C'est quoi
+
+### Analogie: L'entrepot
+
+Imagine une usine (CI/CD) qui produit des pieces (artifacts). Nexus c'est l'entrepot:
+- Tu stockes les pieces finies
+- Tu les etiquettes (versions)
+- Tu controles qui peut les prendre
+- Tu gardes un inventaire
+
+### Types de repositories
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TYPES DE REPOS                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  HOSTED                                                      │
+│  ──────                                                      │
+│  - Tes propres artifacts                                    │
+│  - Tu publies dedans                                        │
+│  - Ex: my-app-1.0.0.jar                                     │
+│                                                              │
+│  PROXY                                                       │
+│  ─────                                                       │
+│  - Cache des repos externes                                 │
+│  - Accelere les downloads                                   │
+│  - Ex: proxy de Maven Central, npmjs.com                    │
+│                                                              │
+│  GROUP                                                       │
+│  ─────                                                       │
+│  - Combine plusieurs repos en un                            │
+│  - Un seul URL pour tout                                    │
+│  - Ex: hosted + proxy ensemble                              │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Formats supportes
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    FORMATS NEXUS                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Maven (Java)                                                │
+│  ────────────                                                │
+│  - JAR, WAR, POM                                            │
+│  - Releases et Snapshots                                    │
+│                                                              │
+│  npm (JavaScript)                                            │
+│  ────────────────                                            │
+│  - Packages npm                                             │
+│  - package.json                                             │
+│                                                              │
+│  Docker                                                      │
+│  ──────                                                      │
+│  - Images Docker                                            │
+│  - Registry prive                                           │
+│                                                              │
+│  PyPI (Python)                                               │
+│  ─────────────                                               │
+│  - Wheels, sdist                                            │
+│  - pip install depuis Nexus                                 │
+│                                                              │
+│  Raw                                                         │
+│  ───                                                         │
+│  - N'importe quel fichier                                   │
+│  - Binaires, scripts, configs                               │
+│                                                              │
+│  Autres: NuGet, Helm, Go, APT, YUM...                       │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Installation avec Docker
+
+```bash
+# Lancer Nexus
+docker run -d \
+  --name nexus \
+  -p 8081:8081 \
+  -v nexus-data:/nexus-data \
+  sonatype/nexus3
+
+# Attendre le demarrage (2-3 minutes)
+docker logs -f nexus
+# Attendre "Started Sonatype Nexus"
+
+# Recuperer le mot de passe admin initial
+docker exec nexus cat /nexus-data/admin.password
+```
+
+**Acces:**
+- URL: http://localhost:8081
+- Username: admin
+- Password: celui recupere ci-dessus
+
+**Premier login:**
+1. Changer le mot de passe admin
+2. Configurer l'acces anonyme (ou pas)
+
+### Creer un repository Maven
+
+#### Via l'interface
+
+1. Settings (engrenage) → Repositories → Create repository
+2. Choisir "maven2 (hosted)"
+3. Configuration:
+   - Name: `maven-releases`
+   - Version policy: Release
+   - Layout policy: Strict
+   - Deployment policy: Allow redeploy (ou Disable pour prod)
+
+4. Creer aussi:
+   - `maven-snapshots` (Version policy: Snapshot)
+   - `maven-proxy` (type: proxy, Remote URL: https://repo1.maven.org/maven2/)
+   - `maven-group` (type: group, membres: releases + snapshots + proxy)
+
+### Publier un artifact Maven
+
+#### Configuration Maven (settings.xml)
+
+```xml
+<!-- ~/.m2/settings.xml -->
+<settings>
+  <servers>
+    <server>
+      <id>nexus-releases</id>
+      <username>admin</username>
+      <password>ton-mot-de-passe</password>
+    </server>
+    <server>
+      <id>nexus-snapshots</id>
+      <username>admin</username>
+      <password>ton-mot-de-passe</password>
+    </server>
+  </servers>
+</settings>
+```
+
+#### Configuration pom.xml
+
+```xml
+<project>
+    <!-- ... -->
+
+    <distributionManagement>
+        <repository>
+            <id>nexus-releases</id>
+            <url>http://localhost:8081/repository/maven-releases/</url>
+        </repository>
+        <snapshotRepository>
+            <id>nexus-snapshots</id>
+            <url>http://localhost:8081/repository/maven-snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
+</project>
+```
+
+#### Deployer
+
+```bash
+# Deployer vers Nexus
+mvn deploy
+
+# Deployer sans les tests
+mvn deploy -DskipTests
+
+# Deployer un artifact specifique
+mvn deploy:deploy-file \
+  -DgroupId=com.example \
+  -DartifactId=mon-lib \
+  -Dversion=1.0.0 \
+  -Dpackaging=jar \
+  -Dfile=target/mon-lib-1.0.0.jar \
+  -DrepositoryId=nexus-releases \
+  -Durl=http://localhost:8081/repository/maven-releases/
+```
+
+### Utiliser Nexus comme proxy Maven
+
+```xml
+<!-- pom.xml ou settings.xml -->
+<repositories>
+    <repository>
+        <id>nexus</id>
+        <url>http://localhost:8081/repository/maven-group/</url>
+    </repository>
+</repositories>
+```
+
+### Repository npm
+
+#### Creer les repos
+
+1. `npm-hosted`: pour tes packages
+2. `npm-proxy`: Remote URL: https://registry.npmjs.org
+3. `npm-group`: combine les deux
+
+#### Configurer npm
+
+```bash
+# Configurer le registry
+npm config set registry http://localhost:8081/repository/npm-group/
+
+# Pour publier, authentification
+echo "//localhost:8081/repository/npm-hosted/:_auth=$(echo -n 'admin:password' | base64)" >> ~/.npmrc
+
+# Publier un package
+npm publish --registry=http://localhost:8081/repository/npm-hosted/
+
+# Installer depuis Nexus
+npm install mon-package
+```
+
+### Repository Docker
+
+#### Creer un Docker registry
+
+1. Create repository → docker (hosted)
+2. Configuration:
+   - Name: `docker-hosted`
+   - HTTP port: 8082 (important!)
+   - Enable Docker V1 API: non
+
+3. Creer aussi:
+   - `docker-proxy`: Remote URL: https://registry-1.docker.io
+   - `docker-group`: port 8083, membres: hosted + proxy
+
+#### Configurer Docker
+
+```bash
+# Ajouter le registry non-securise (pour dev)
+# /etc/docker/daemon.json
+{
+  "insecure-registries": ["localhost:8082", "localhost:8083"]
+}
+
+# Restart Docker
+sudo systemctl restart docker
+
+# Login
+docker login localhost:8082 -u admin -p password
+
+# Tag et push
+docker tag mon-image:latest localhost:8082/mon-image:1.0.0
+docker push localhost:8082/mon-image:1.0.0
+
+# Pull
+docker pull localhost:8083/mon-image:1.0.0
+```
+
+### Repository PyPI (Python)
+
+#### Creer les repos
+
+1. `pypi-hosted`: pour tes packages
+2. `pypi-proxy`: Remote URL: https://pypi.org
+3. `pypi-group`: combine les deux
+
+#### Configurer pip
+
+```bash
+# ~/.pip/pip.conf
+[global]
+index-url = http://localhost:8081/repository/pypi-group/simple/
+trusted-host = localhost
+
+# Ou via variable d'environnement
+export PIP_INDEX_URL=http://localhost:8081/repository/pypi-group/simple/
+
+# Installer
+pip install mon-package
+
+# Publier avec twine
+pip install twine
+twine upload --repository-url http://localhost:8081/repository/pypi-hosted/ dist/*
+```
+
+---
+
+## Bonnes pratiques
+
+### Versionning
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    VERSIONNING                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  SEMANTIC VERSIONING (SemVer)                                │
+│  ────────────────────────────                                │
+│  MAJOR.MINOR.PATCH                                          │
+│                                                              │
+│  1.0.0 → 1.0.1   PATCH: bug fix                             │
+│  1.0.1 → 1.1.0   MINOR: nouvelle feature (compatible)       │
+│  1.1.0 → 2.0.0   MAJOR: breaking change                     │
+│                                                              │
+│  SNAPSHOTS vs RELEASES                                       │
+│  ─────────────────────                                       │
+│  1.0.0-SNAPSHOT: Version en cours de dev                    │
+│  1.0.0: Version finale, stable                              │
+│                                                              │
+│  Regles:                                                     │
+│  - Snapshots: peuvent etre ecrases                          │
+│  - Releases: immutables (jamais modifier!)                  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Cleanup policies
+
+```bash
+# Supprimer les vieux snapshots
+# Settings → Repository → Cleanup Policies
+
+# Exemple de policy:
+# - Component Age: older than 30 days
+# - Asset Name Matcher: .*SNAPSHOT.*
+```
+
+### Securite
+
+```bash
+# Creer des roles specifiques
+# Admin → Security → Roles
+
+# Role: developer
+# Privileges:
+#   - nx-repository-view-maven2-maven-releases-read
+#   - nx-repository-view-maven2-maven-snapshots-*
+#   - nx-repository-view-npm-npm-group-read
+
+# Creer des users avec ces roles
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Setup Nexus
+
+```bash
+# 1. Lancer Nexus
+docker run -d --name nexus -p 8081:8081 -v nexus-data:/nexus-data sonatype/nexus3
+
+# 2. Attendre et recuperer le password
+sleep 120
+docker exec nexus cat /nexus-data/admin.password
+
+# 3. Se connecter sur http://localhost:8081
+# 4. Changer le mot de passe
+# 5. Creer un maven-hosted repository
+```
+
+### Exercice 2: Publier un JAR
+
+```bash
+# 1. Creer un projet Maven simple
+mkdir test-artifact && cd test-artifact
+cat > pom.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>test-lib</artifactId>
+    <version>1.0.0</version>
+
+    <distributionManagement>
+        <repository>
+            <id>nexus</id>
+            <url>http://localhost:8081/repository/maven-releases/</url>
+        </repository>
+    </distributionManagement>
+</project>
+EOF
+
+# 2. Creer une classe
+mkdir -p src/main/java/com/example
+cat > src/main/java/com/example/Hello.java << 'EOF'
+package com.example;
+public class Hello {
+    public static String say() { return "Hello Nexus!"; }
+}
+EOF
+
+# 3. Configurer les credentials
+cat > ~/.m2/settings.xml << 'EOF'
+<settings>
+  <servers>
+    <server>
+      <id>nexus</id>
+      <username>admin</username>
+      <password>TON_PASSWORD</password>
+    </server>
+  </servers>
+</settings>
+EOF
+
+# 4. Build et deploy
+mvn clean deploy
+
+# 5. Verifier dans Nexus UI: Browse → maven-releases
+```
+
+### Exercice 3: Utiliser comme proxy
+
+```bash
+# 1. Creer un maven-proxy vers Maven Central
+
+# 2. Creer un maven-group avec hosted + proxy
+
+# 3. Configurer un projet pour utiliser le group
+cat >> pom.xml << 'EOF'
+    <repositories>
+        <repository>
+            <id>nexus-group</id>
+            <url>http://localhost:8081/repository/maven-group/</url>
+        </repository>
+    </repositories>
+EOF
+
+# 4. Ajouter une dependance et builder
+# Les deps seront cachees dans Nexus
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Pipeline avec Nexus
+
+```bash
+# === Objectif: CI qui publie vers Nexus ===
+
+# Structure
+my-project/
+├── pom.xml
+├── src/
+├── Jenkinsfile
+└── docker-compose.yml
+
+# === docker-compose.yml ===
+cat > docker-compose.yml << 'EOF'
+version: '3'
+services:
+  nexus:
+    image: sonatype/nexus3
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+    volumes:
+      - nexus-data:/nexus-data
+
+  jenkins:
+    image: jenkins/jenkins:lts
+    ports:
+      - "8080:8080"
+    volumes:
+      - jenkins-data:/var/jenkins_home
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+
+volumes:
+  nexus-data:
+  jenkins-data:
+EOF
+
+# === Jenkinsfile ===
+cat > Jenkinsfile << 'EOF'
+pipeline {
+    agent any
+
+    environment {
+        NEXUS_URL = 'http://nexus:8081'
+        NEXUS_CREDENTIALS = credentials('nexus-credentials')
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+
+        stage('Publish to Nexus') {
+            steps {
+                sh '''
+                    mvn deploy \
+                      -DaltDeploymentRepository=nexus::default::${NEXUS_URL}/repository/maven-releases/ \
+                      -DskipTests
+                '''
+            }
+        }
+    }
+}
+EOF
+
+# === Lancer l'infra ===
+docker-compose up -d
+
+# Configurer Nexus (repos)
+# Configurer Jenkins (credentials, pipeline)
+# Lancer le build
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         NEXUS                                │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  INSTALLATION                                                │
+│  ────────────                                                │
+│  docker run -d -p 8081:8081 -v nexus-data:/nexus-data \    │
+│    sonatype/nexus3                                          │
+│  docker exec nexus cat /nexus-data/admin.password          │
+│                                                              │
+│  TYPES DE REPOS                                              │
+│  ──────────────                                              │
+│  hosted: Tes artifacts                                      │
+│  proxy:  Cache des repos externes                           │
+│  group:  Combine plusieurs repos                            │
+│                                                              │
+│  MAVEN                                                       │
+│  ─────                                                       │
+│  mvn deploy                    # Publier                    │
+│  mvn deploy:deploy-file ...    # Publier un fichier        │
+│                                                              │
+│  ~/.m2/settings.xml:                                         │
+│  <server><id>nexus</id><username>...</username>...</server>│
+│                                                              │
+│  NPM                                                         │
+│  ───                                                         │
+│  npm config set registry http://nexus:8081/repository/npm/ │
+│  npm publish --registry=...                                 │
+│                                                              │
+│  DOCKER                                                      │
+│  ──────                                                      │
+│  docker login nexus:8082                                    │
+│  docker tag img nexus:8082/img:v1                          │
+│  docker push nexus:8082/img:v1                             │
+│                                                              │
+│  PYTHON                                                      │
+│  ──────                                                      │
+│  pip install --index-url http://nexus/repository/pypi/ pkg │
+│  twine upload --repository-url ... dist/*                  │
+│                                                              │
+│  VERSIONNING                                                 │
+│  ──────────                                                  │
+│  1.0.0-SNAPSHOT: Dev en cours (mutable)                    │
+│  1.0.0: Release stable (immutable)                         │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi un artifact repository?**
+   → Stockage centralise pour les artifacts (JAR, images Docker, packages). Permet le versionning, le partage, et le cache.
+
+2. **Difference entre hosted, proxy et group?**
+   → Hosted: tes propres artifacts. Proxy: cache d'un repo externe. Group: combine plusieurs repos en un seul URL.
+
+3. **Pourquoi utiliser Nexus comme proxy?**
+   → Cache les dependances, accelere les builds, fonctionne offline, controle ce qui entre dans l'entreprise.
+
+4. **Difference entre snapshot et release?**
+   → Snapshot: version en dev, peut etre ecrasee. Release: version finale, immutable, jamais modifier.
+
+5. **Comment securiser Nexus?**
+   → Authentification, roles granulaires, HTTPS, firewall, audit des acces.
+
+6. **Alternatives a Nexus?**
+   → JFrog Artifactory (plus complet, payant), Harbor (Docker), GitLab Package Registry, GitHub Packages.
+
+---
+
+## Sujets lies
+
+- **Avant:** [Build Tools](/devops/build-tools) - Creer les artifacts
+- **Apres:** [Docker](/devops/docker) - Images Docker dans Nexus
+- **Apres:** [Jenkins](/devops/jenkins) - Pipeline qui publie vers Nexus
+- **Lie:** [CI/CD](/devops/jenkins) - Integration dans le pipeline
+
+---
+
+*Temps estime: 35 min lecture + 25 min pratique*

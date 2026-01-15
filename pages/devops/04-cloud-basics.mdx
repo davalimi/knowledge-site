@@ -1,0 +1,613 @@
+# Cloud & IaaS - Les fondamentaux
+
+`[DEBUTANT]` - Temps: 40 min lecture + 25 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Le cloud a revolutionne l'IT. Plus besoin d'acheter des serveurs physiques, tu peux:
+- Lancer une infra en quelques minutes
+- Payer uniquement ce que tu utilises
+- Scaler automatiquement selon la demande
+- Avoir des serveurs partout dans le monde
+
+En DevOps, tu travailles avec le cloud tous les jours. C'est devenu la norme.
+
+---
+
+## What - C'est quoi
+
+### Analogie: L'electricite
+
+**Avant le cloud:** Tu devais construire ta propre centrale electrique (datacenter) pour avoir de l'electricite (compute).
+
+**Avec le cloud:** Tu branches sur le reseau (provider), tu paies ce que tu consommes, et quelqu'un d'autre gere la centrale.
+
+### Les modeles de service
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MODELES CLOUD                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ON-PREMISE              IaaS            PaaS          SaaS │
+│  (Toi tu geres tout)     (Infra)        (Platform)   (Soft) │
+│                                                              │
+│  ┌────────────────┐  ┌────────────┐  ┌──────────┐  ┌──────┐ │
+│  │ Application    │  │ Application│  │Application│ │      │ │
+│  │ Data           │  │ Data       │  │ Data      │ │      │ │
+│  │ Runtime        │  │ Runtime    │  ├───────────┤ │      │ │
+│  │ Middleware     │  │ Middleware │  │           │ │ TOUT │ │
+│  │ OS             │  │ OS         │  │  Provider │ │ GERE │ │
+│  │ Virtualization │  ├────────────┤  │  gere     │ │      │ │
+│  │ Servers        │  │            │  │           │ │      │ │
+│  │ Storage        │  │  Provider  │  │           │ │      │ │
+│  │ Network        │  │  gere      │  │           │ │      │ │
+│  └────────────────┘  └────────────┘  └───────────┘ └──────┘ │
+│                                                              │
+│  Exemples:           AWS EC2         Heroku        Gmail    │
+│                      DigitalOcean    Vercel        Slack    │
+│                      Azure VM        Railway       Salesforce│
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Les principaux providers
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CLOUD PROVIDERS                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  AWS (Amazon Web Services)                                   │
+│  ─────────────────────────                                   │
+│  - Leader du marche (~32%)                                  │
+│  - Le plus de services (200+)                               │
+│  - Le plus utilise en entreprise                            │
+│                                                              │
+│  Azure (Microsoft)                                           │
+│  ─────────────────                                           │
+│  - #2 (~22%)                                                │
+│  - Integration Microsoft (AD, Office)                       │
+│  - Fort en entreprise                                       │
+│                                                              │
+│  GCP (Google Cloud Platform)                                 │
+│  ───────────────────────────                                 │
+│  - #3 (~10%)                                                │
+│  - Fort en data/ML                                          │
+│  - Kubernetes natif (ils l'ont cree)                        │
+│                                                              │
+│  Autres                                                      │
+│  ──────                                                      │
+│  - DigitalOcean: Simple, dev-friendly, bon prix            │
+│  - Linode: Simple, bon support                              │
+│  - OVH: Europeen, bon prix                                  │
+│  - Hetzner: Allemand, tres bon prix                         │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Services de base (IaaS)
+
+| Service | Description | AWS | Azure | GCP |
+|---------|-------------|-----|-------|-----|
+| **Compute** | Machines virtuelles | EC2 | Virtual Machines | Compute Engine |
+| **Storage** | Stockage objet | S3 | Blob Storage | Cloud Storage |
+| **Network** | Reseau virtuel | VPC | VNet | VPC |
+| **Database** | BDD managee | RDS | Azure SQL | Cloud SQL |
+| **DNS** | Noms de domaine | Route 53 | Azure DNS | Cloud DNS |
+| **Load Balancer** | Repartition charge | ELB/ALB | Load Balancer | Cloud Load Balancing |
+
+---
+
+## How - En pratique (DigitalOcean)
+
+On utilise DigitalOcean car c'est simple et parfait pour apprendre. Les concepts sont les memes partout.
+
+### Creer un compte
+
+1. Va sur [digitalocean.com](https://digitalocean.com)
+2. Cree un compte
+3. Ajoute un moyen de paiement (ou utilise les credits gratuits)
+
+### Creer un Droplet (VM)
+
+#### Via l'interface web
+
+1. Dashboard → Create → Droplets
+2. Choisis:
+   - **Region:** Frankfurt (proche de toi)
+   - **Image:** Ubuntu 22.04
+   - **Size:** Basic, $6/mois (1GB RAM)
+   - **Authentication:** SSH Key (recommande)
+   - **Hostname:** mon-serveur
+
+#### Via la CLI (doctl)
+
+```bash
+# Installer doctl
+# macOS
+brew install doctl
+
+# Linux
+snap install doctl
+
+# Authentification
+doctl auth init
+# Colle ton API token (cree dans Account → API)
+
+# Creer un droplet
+doctl compute droplet create mon-serveur \
+  --region fra1 \
+  --image ubuntu-22-04-x64 \
+  --size s-1vcpu-1gb \
+  --ssh-keys $(doctl compute ssh-key list --format ID --no-header)
+
+# Lister les droplets
+doctl compute droplet list
+
+# Voir les details
+doctl compute droplet get mon-serveur
+
+# Supprimer
+doctl compute droplet delete mon-serveur
+```
+
+### Se connecter en SSH
+
+```bash
+# Recuperer l'IP
+doctl compute droplet list --format Name,PublicIPv4
+
+# Se connecter
+ssh root@IP_DU_DROPLET
+
+# Ou avec doctl
+doctl compute ssh mon-serveur
+```
+
+### Concepts cles DigitalOcean
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DIGITALOCEAN SERVICES                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Droplets                                                    │
+│  ────────                                                    │
+│  = Machines virtuelles (VMs)                                │
+│  Sizes: Basic ($6/mo) → Premium ($2000+/mo)                 │
+│  OS: Ubuntu, Debian, CentOS, Fedora, FreeBSD               │
+│                                                              │
+│  Volumes                                                     │
+│  ───────                                                     │
+│  = Disques additionnels                                     │
+│  Attachables/detachables des droplets                       │
+│  SSD, $0.10/GB/mois                                         │
+│                                                              │
+│  Spaces                                                      │
+│  ──────                                                      │
+│  = Stockage objet (comme S3)                                │
+│  Pour fichiers, backups, assets statiques                   │
+│  $5/mo pour 250GB + CDN inclus                              │
+│                                                              │
+│  Managed Databases                                           │
+│  ─────────────────                                           │
+│  = PostgreSQL, MySQL, Redis, MongoDB                        │
+│  Backups auto, replicas, failover                           │
+│                                                              │
+│  Load Balancers                                              │
+│  ──────────────                                              │
+│  = Distribuer le trafic sur plusieurs droplets              │
+│  $12/mo                                                      │
+│                                                              │
+│  VPC                                                         │
+│  ───                                                         │
+│  = Reseau prive entre droplets                              │
+│  Gratuit, isole ton infra                                   │
+│                                                              │
+│  Firewalls                                                   │
+│  ─────────                                                   │
+│  = Regles de securite                                       │
+│  Gratuit, applique a des droplets/tags                      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Creer une infra complete
+
+```bash
+# === 1. Creer un VPC ===
+doctl vpcs create \
+  --name mon-vpc \
+  --region fra1 \
+  --ip-range 10.10.0.0/16
+
+# === 2. Creer des droplets dans le VPC ===
+# Web server
+doctl compute droplet create web-1 \
+  --region fra1 \
+  --image ubuntu-22-04-x64 \
+  --size s-1vcpu-1gb \
+  --vpc-uuid $(doctl vpcs list --format ID --no-header) \
+  --ssh-keys $(doctl compute ssh-key list --format ID --no-header) \
+  --tag-name web
+
+# Database server
+doctl compute droplet create db-1 \
+  --region fra1 \
+  --image ubuntu-22-04-x64 \
+  --size s-1vcpu-2gb \
+  --vpc-uuid $(doctl vpcs list --format ID --no-header) \
+  --ssh-keys $(doctl compute ssh-key list --format ID --no-header) \
+  --tag-name database
+
+# === 3. Creer un firewall ===
+doctl compute firewall create \
+  --name web-firewall \
+  --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0 protocol:tcp,ports:80,address:0.0.0.0/0 protocol:tcp,ports:443,address:0.0.0.0/0" \
+  --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0 protocol:udp,ports:all,address:0.0.0.0/0" \
+  --tag-names web
+
+doctl compute firewall create \
+  --name db-firewall \
+  --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0 protocol:tcp,ports:5432,address:10.10.0.0/16" \
+  --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0" \
+  --tag-names database
+
+# === 4. Ajouter du stockage ===
+doctl compute volume create data-volume \
+  --region fra1 \
+  --size 50GiB \
+  --desc "Database storage"
+
+# Attacher au droplet
+doctl compute volume-action attach $(doctl compute volume list --format ID --no-header) \
+  $(doctl compute droplet list --format ID,Name --no-header | grep db-1 | cut -f1)
+```
+
+### Snapshots et backups
+
+```bash
+# Creer un snapshot (image de la VM)
+doctl compute droplet-action snapshot mon-serveur --snapshot-name backup-$(date +%Y%m%d)
+
+# Lister les snapshots
+doctl compute snapshot list
+
+# Creer un droplet depuis un snapshot
+doctl compute droplet create restored-server \
+  --region fra1 \
+  --image SNAPSHOT_ID \
+  --size s-1vcpu-1gb \
+  --ssh-keys $(doctl compute ssh-key list --format ID --no-header)
+
+# Activer les backups automatiques (7 derniers jours)
+doctl compute droplet-action enable-backups DROPLET_ID
+```
+
+---
+
+## Concepts Cloud universels
+
+### Regions et Availability Zones
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    GEOGRAPHIE CLOUD                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  REGION = Zone geographique (ex: eu-west-1, fra1)           │
+│  ───────                                                     │
+│  - Datacenters physiquement separes                         │
+│  - Latence: choisis proche de tes users                     │
+│  - Compliance: donnees dans une region specifique           │
+│                                                              │
+│  AVAILABILITY ZONE (AZ) = Datacenter dans une region        │
+│  ───────────────────────                                     │
+│  - Plusieurs AZ par region                                  │
+│  - Haute dispo: deployer sur plusieurs AZ                   │
+│  - Si une AZ tombe, les autres continuent                   │
+│                                                              │
+│  ┌──────────── EU-WEST-1 (Ireland) ────────────┐            │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐      │            │
+│  │  │  AZ-1a  │  │  AZ-1b  │  │  AZ-1c  │      │            │
+│  │  │ ┌─────┐ │  │ ┌─────┐ │  │ ┌─────┐ │      │            │
+│  │  │ │ VM  │ │  │ │ VM  │ │  │ │ VM  │ │      │            │
+│  │  │ └─────┘ │  │ └─────┘ │  │ └─────┘ │      │            │
+│  │  └─────────┘  └─────────┘  └─────────┘      │            │
+│  └─────────────────────────────────────────────┘            │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Types de stockage
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TYPES DE STOCKAGE                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  BLOCK STORAGE (Volumes)                                     │
+│  ──────────────────────                                      │
+│  - Comme un disque dur attache a la VM                      │
+│  - Formatage avec filesystem (ext4, xfs)                    │
+│  - Utilisation: OS, databases                               │
+│  - Ex: EBS, DO Volumes, Azure Disk                          │
+│                                                              │
+│  OBJECT STORAGE (Buckets)                                    │
+│  ────────────────────────                                    │
+│  - Stockage de fichiers via API HTTP                        │
+│  - Pas de filesystem, acces par URL                         │
+│  - Utilisation: backups, images, logs, assets              │
+│  - Ex: S3, DO Spaces, Azure Blob                            │
+│  - Tres pas cher pour gros volumes                          │
+│                                                              │
+│  FILE STORAGE (NFS/SMB)                                      │
+│  ──────────────────────                                      │
+│  - Systeme de fichiers partage                              │
+│  - Plusieurs VMs accedent au meme stockage                  │
+│  - Ex: EFS, Azure Files                                     │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Pricing models
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MODELES DE PRIX                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ON-DEMAND (A la demande)                                    │
+│  ────────────────────────                                    │
+│  - Paiement a l'heure ou la seconde                        │
+│  - Flexibilite maximale                                     │
+│  - Le plus cher                                             │
+│                                                              │
+│  RESERVED (Reserve)                                          │
+│  ─────────────────                                           │
+│  - Engagement 1 ou 3 ans                                    │
+│  - Reduction 30-75%                                         │
+│  - Pour workloads stables                                   │
+│                                                              │
+│  SPOT/PREEMPTIBLE (Opportuniste)                            │
+│  ───────────────────────────────                            │
+│  - Capacite inutilisee du provider                          │
+│  - Reduction 60-90%                                         │
+│  - Peut etre interrompu a tout moment                       │
+│  - Pour jobs non-critiques, batch processing               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Premier droplet
+
+```bash
+# 1. Creer un droplet
+doctl compute droplet create test-server \
+  --region fra1 \
+  --image ubuntu-22-04-x64 \
+  --size s-1vcpu-1gb \
+  --ssh-keys $(doctl compute ssh-key list --format ID --no-header)
+
+# 2. Attendre qu'il soit pret
+doctl compute droplet list
+
+# 3. Se connecter
+ssh root@$(doctl compute droplet list --format PublicIPv4 --no-header)
+
+# 4. Installer nginx
+apt update && apt install -y nginx
+systemctl start nginx
+
+# 5. Tester dans le navigateur
+echo "http://$(doctl compute droplet list --format PublicIPv4 --no-header)"
+
+# 6. Nettoyer
+doctl compute droplet delete test-server --force
+```
+
+### Exercice 2: Stockage
+
+```bash
+# 1. Creer un volume
+doctl compute volume create test-volume --region fra1 --size 10GiB
+
+# 2. L'attacher
+doctl compute volume-action attach VOLUME_ID DROPLET_ID
+
+# 3. Sur le droplet: formater et monter
+ssh root@IP
+lsblk  # voir le nouveau disque
+mkfs.ext4 /dev/sda
+mkdir /mnt/data
+mount /dev/sda /mnt/data
+echo "/dev/sda /mnt/data ext4 defaults 0 0" >> /etc/fstab
+```
+
+### Exercice 3: Firewall
+
+```bash
+# 1. Creer un firewall restrictif
+doctl compute firewall create \
+  --name strict-firewall \
+  --inbound-rules "protocol:tcp,ports:22,address:TON_IP/32" \
+  --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0" \
+  --droplet-ids DROPLET_ID
+
+# 2. Tester l'acces SSH
+ssh root@DROPLET_IP  # OK depuis ton IP
+
+# 3. Le port 80 est bloque
+curl http://DROPLET_IP  # Timeout
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Deployer une app web
+
+```bash
+# === Objectif: Nginx + App sur DigitalOcean ===
+
+# 1. Creer le droplet
+doctl compute droplet create web-app \
+  --region fra1 \
+  --image ubuntu-22-04-x64 \
+  --size s-1vcpu-1gb \
+  --ssh-keys $(doctl compute ssh-key list --format ID --no-header) \
+  --tag-name web
+
+# 2. Configurer le firewall
+doctl compute firewall create \
+  --name web-app-fw \
+  --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0 protocol:tcp,ports:80,address:0.0.0.0/0 protocol:tcp,ports:443,address:0.0.0.0/0" \
+  --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0 protocol:udp,ports:all,address:0.0.0.0/0" \
+  --tag-names web
+
+# 3. Se connecter et configurer
+IP=$(doctl compute droplet list --format PublicIPv4 --no-header)
+ssh root@$IP << 'EOF'
+# Mise a jour
+apt update && apt upgrade -y
+
+# Installer les outils
+apt install -y nginx certbot python3-certbot-nginx git
+
+# Cloner une app simple
+cd /var/www
+git clone https://github.com/heroku/node-js-getting-started.git app
+cd app
+
+# Installer Node.js
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
+npm install
+npm install -g pm2
+
+# Lancer l'app
+pm2 start index.js --name myapp
+pm2 save
+pm2 startup
+
+# Configurer Nginx comme reverse proxy
+cat > /etc/nginx/sites-available/myapp << 'NGINX'
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        proxy_pass http://localhost:5001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+NGINX
+
+ln -s /etc/nginx/sites-available/myapp /etc/nginx/sites-enabled/
+rm /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+
+echo "App deployed! Visit http://$(curl -s ifconfig.me)"
+EOF
+
+# 4. Tester
+curl http://$IP
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CLOUD BASICS                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  MODELES                                                     │
+│  ───────                                                     │
+│  IaaS: Infrastructure (VMs, reseau) - tu geres l'app       │
+│  PaaS: Plateforme (Heroku) - tu geres juste le code        │
+│  SaaS: Software (Gmail) - tu utilises juste                 │
+│                                                              │
+│  PROVIDERS                                                   │
+│  ─────────                                                   │
+│  AWS: Leader, le plus de services                           │
+│  Azure: Microsoft, entreprise                               │
+│  GCP: Google, data/ML                                       │
+│  DO/Linode: Simple, devs                                    │
+│                                                              │
+│  DOCTL (DigitalOcean CLI)                                    │
+│  ────────────────────────                                    │
+│  doctl auth init                      # Login               │
+│  doctl compute droplet create NAME    # Creer VM           │
+│  doctl compute droplet list           # Lister             │
+│  doctl compute droplet delete NAME    # Supprimer          │
+│  doctl compute ssh NAME               # SSH direct         │
+│                                                              │
+│  CONCEPTS                                                    │
+│  ────────                                                    │
+│  Region: Zone geographique                                  │
+│  AZ: Datacenter dans une region                            │
+│  VPC: Reseau prive                                          │
+│  Security Group: Firewall pour VMs                          │
+│                                                              │
+│  STOCKAGE                                                    │
+│  ────────                                                    │
+│  Block: Disque attache (EBS, Volumes)                       │
+│  Object: Fichiers via API (S3, Spaces)                      │
+│  File: NFS partage (EFS)                                    │
+│                                                              │
+│  PRICING                                                     │
+│  ───────                                                     │
+│  On-demand: Flexible, plus cher                             │
+│  Reserved: 1-3 ans, -30-75%                                 │
+│  Spot: Interruptible, -60-90%                               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi IaaS, PaaS, SaaS?**
+   → IaaS: infra (VMs), tu geres OS et app. PaaS: plateforme, tu geres juste le code. SaaS: logiciel pret a l'emploi.
+
+2. **Pourquoi utiliser le cloud?**
+   → Pas d'investissement initial, paiement a l'usage, scalabilite, disponibilite mondiale, focus sur le business.
+
+3. **C'est quoi une region et une AZ?**
+   → Region = zone geo (Paris, Francfort). AZ = datacenter dans une region. Multi-AZ = haute disponibilite.
+
+4. **Difference entre block storage et object storage?**
+   → Block: disque attache, filesystem. Object: fichiers via API, pas de filesystem, ideal pour backups/assets.
+
+5. **Comment securiser une infra cloud?**
+   → VPC pour isolation, security groups/firewalls, IAM pour les acces, chiffrement, monitoring.
+
+6. **C'est quoi le principe de responsabilite partagee?**
+   → Le provider gere l'infra physique et la plateforme. Toi tu geres tes apps, donnees, et config securite.
+
+---
+
+## Sujets lies
+
+- **Avant:** [Build Tools](/devops/build-tools) - Construire ton app
+- **Apres:** [Docker](/devops/docker) - Containeriser pour le cloud
+- **Apres:** [AWS Services](/devops/aws) - Deep dive AWS
+- **Lie:** [Terraform](/devops/terraform) - Infrastructure as Code
+
+---
+
+*Temps estime: 40 min lecture + 25 min pratique*

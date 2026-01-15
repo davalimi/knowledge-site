@@ -1,0 +1,574 @@
+# Git - Le versioning indispensable
+
+`[DEBUTANT]` - Temps: 40 min lecture + 35 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Git c'est comment le monde entier collabore sur du code. Sans Git, pas de:
+- Historique des modifications
+- Travail en equipe
+- Rollback si tu casses tout
+- CI/CD
+- Open source
+
+En DevOps, tu utilises Git plusieurs fois par jour. C'est aussi fondamental que savoir taper au clavier.
+
+---
+
+## What - C'est quoi
+
+### Analogie: Le jeu video avec sauvegardes
+
+Imagine un jeu video ou tu peux:
+- **Sauvegarder** a n'importe quel moment (commit)
+- **Revenir** a une sauvegarde precedente (checkout)
+- **Creer des univers paralleles** pour tester des trucs (branches)
+- **Fusionner** deux univers (merge)
+- **Synchroniser** avec tes potes (push/pull)
+
+### Concepts cles
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ARCHITECTURE GIT                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Working Directory → Staging Area → Local Repo → Remote     │
+│      (fichiers)        (index)       (.git)      (GitHub)   │
+│                                                              │
+│         │                 │              │            │      │
+│         │    git add      │  git commit  │  git push  │      │
+│         │ ───────────────▶│ ────────────▶│ ──────────▶│      │
+│         │                 │              │            │      │
+│         │                 │              │  git pull  │      │
+│         │ ◀───────────────│ ◀────────────│ ◀──────────│      │
+│         │   git checkout  │  git reset   │            │      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Configuration initiale
+
+```bash
+# Identite (obligatoire)
+git config --global user.name "Ton Nom"
+git config --global user.email "ton@email.com"
+
+# Editeur par defaut
+git config --global core.editor "vim"  # ou nano, code, etc
+
+# Voir la config
+git config --list
+
+# Alias utiles
+git config --global alias.st status
+git config --global alias.co checkout
+git config --global alias.br branch
+git config --global alias.ci commit
+git config --global alias.lg "log --oneline --graph --all"
+```
+
+### Creer un repo
+
+```bash
+# Nouveau projet
+mkdir mon-projet
+cd mon-projet
+git init
+
+# Cloner un projet existant
+git clone https://github.com/user/repo.git
+git clone git@github.com:user/repo.git  # SSH (recommande)
+```
+
+### Workflow de base
+
+```bash
+# 1. Voir le status
+git status
+
+# 2. Ajouter des fichiers
+git add fichier.txt           # un fichier
+git add .                     # tout
+git add -A                    # vraiment tout (y compris suppressions)
+git add -p                    # interactif (choisir les changements)
+
+# 3. Committer
+git commit -m "Message clair et concis"
+git commit -am "Message"      # add + commit (fichiers deja tracked)
+
+# 4. Voir l'historique
+git log
+git log --oneline             # compact
+git log --oneline --graph     # avec branches
+git log -5                    # 5 derniers commits
+git log --stat                # avec fichiers modifies
+
+# 5. Pousser vers le remote
+git push origin main
+git push -u origin main       # -u pour definir l'upstream
+```
+
+### Branches
+
+```bash
+# Lister les branches
+git branch                    # locales
+git branch -a                 # toutes (+ remote)
+git branch -v                 # avec dernier commit
+
+# Creer une branche
+git branch feature-login
+git checkout -b feature-login # creer et switch
+git switch -c feature-login   # nouvelle syntaxe
+
+# Changer de branche
+git checkout main
+git switch main               # nouvelle syntaxe
+
+# Supprimer une branche
+git branch -d feature-login   # si mergee
+git branch -D feature-login   # forcer
+
+# Renommer
+git branch -m ancien nouveau
+```
+
+### Merge
+
+```bash
+# Merger une branche dans main
+git checkout main
+git merge feature-login
+
+# Si conflit:
+# 1. Editer les fichiers en conflit
+# 2. git add fichiers-resolus
+# 3. git commit
+
+# Annuler un merge en cours
+git merge --abort
+```
+
+### Rebase (alternative au merge)
+
+```bash
+# Rebase ta branche sur main
+git checkout feature-login
+git rebase main
+
+# Si conflit:
+# 1. Resoudre
+# 2. git add fichiers
+# 3. git rebase --continue
+
+# Annuler
+git rebase --abort
+
+# Rebase interactif (squash commits, reorder, edit)
+git rebase -i HEAD~3          # 3 derniers commits
+```
+
+### Remote
+
+```bash
+# Voir les remotes
+git remote -v
+
+# Ajouter un remote
+git remote add origin git@github.com:user/repo.git
+git remote add upstream git@github.com:original/repo.git
+
+# Changer l'URL
+git remote set-url origin nouvelle-url
+
+# Supprimer
+git remote remove origin
+
+# Fetch (recuperer sans merger)
+git fetch origin
+git fetch --all
+
+# Pull (fetch + merge)
+git pull origin main
+git pull --rebase             # fetch + rebase (plus propre)
+```
+
+### Annuler des changements
+
+```bash
+# Annuler les modifs d'un fichier (non committe)
+git checkout -- fichier.txt
+git restore fichier.txt       # nouvelle syntaxe
+
+# Unstage un fichier (apres git add)
+git reset HEAD fichier.txt
+git restore --staged fichier.txt
+
+# Annuler le dernier commit (garde les fichiers)
+git reset --soft HEAD~1
+
+# Annuler le dernier commit (perd les changements)
+git reset --hard HEAD~1
+
+# Creer un commit inverse
+git revert HEAD               # annule le dernier commit
+git revert abc1234            # annule un commit specifique
+```
+
+### Stash (mettre de cote)
+
+```bash
+# Sauvegarder les modifs en cours
+git stash
+git stash save "message"
+git stash -u                  # inclure fichiers untracked
+
+# Voir les stash
+git stash list
+
+# Recuperer
+git stash pop                 # applique et supprime
+git stash apply               # applique sans supprimer
+git stash apply stash@{1}     # un stash specifique
+
+# Supprimer
+git stash drop
+git stash clear               # tout supprimer
+```
+
+### Tags
+
+```bash
+# Creer un tag
+git tag v1.0.0
+git tag -a v1.0.0 -m "Version 1.0.0"  # annote
+
+# Lister
+git tag
+git tag -l "v1.*"
+
+# Pousser les tags
+git push origin v1.0.0
+git push origin --tags        # tous les tags
+
+# Supprimer
+git tag -d v1.0.0             # local
+git push origin :v1.0.0       # remote
+```
+
+### Diff
+
+```bash
+# Voir les modifications
+git diff                      # working vs staging
+git diff --staged             # staging vs dernier commit
+git diff HEAD                 # working vs dernier commit
+git diff main..feature        # entre branches
+git diff abc123..def456       # entre commits
+```
+
+### .gitignore
+
+```bash
+# Fichiers/dossiers a ignorer
+cat > .gitignore << 'EOF'
+# Dependencies
+node_modules/
+vendor/
+venv/
+
+# Build
+dist/
+build/
+*.pyc
+__pycache__/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+.env.local
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+EOF
+```
+
+---
+
+## Bonnes pratiques commits
+
+### Messages de commit
+
+```bash
+# Format recommande
+<type>: <description courte>
+
+<corps optionnel>
+
+# Types courants
+feat: nouvelle fonctionnalite
+fix: correction de bug
+docs: documentation
+style: formatage (pas de changement de code)
+refactor: refactoring
+test: ajout de tests
+chore: maintenance
+```
+
+**Exemples:**
+```
+feat: add user authentication
+fix: resolve crash on empty input
+docs: update API documentation
+refactor: simplify database queries
+```
+
+### Commits atomiques
+
+- Un commit = un changement logique
+- Pas de "fix everything" ou "WIP"
+- Facile a reverter si besoin
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Workflow basique
+
+```bash
+# 1. Creer un repo
+mkdir git-practice && cd git-practice
+git init
+
+# 2. Premier commit
+echo "# Mon Projet" > README.md
+git add README.md
+git commit -m "docs: add README"
+
+# 3. Modifier et committer
+echo "Description du projet" >> README.md
+git add README.md
+git commit -m "docs: add project description"
+
+# 4. Voir l'historique
+git log --oneline
+```
+
+### Exercice 2: Branches
+
+```bash
+# 1. Creer une branche
+git checkout -b feature-hello
+
+# 2. Ajouter un fichier
+echo "print('Hello')" > hello.py
+git add hello.py
+git commit -m "feat: add hello script"
+
+# 3. Revenir sur main
+git checkout main
+
+# 4. Merger
+git merge feature-hello
+
+# 5. Supprimer la branche
+git branch -d feature-hello
+```
+
+### Exercice 3: Resoudre un conflit
+
+```bash
+# 1. Creer deux branches avec modifs conflictuelles
+git checkout -b branch-a
+echo "Version A" > conflict.txt
+git add conflict.txt
+git commit -m "add version A"
+
+git checkout main
+git checkout -b branch-b
+echo "Version B" > conflict.txt
+git add conflict.txt
+git commit -m "add version B"
+
+# 2. Merger branch-a dans main
+git checkout main
+git merge branch-a
+
+# 3. Essayer de merger branch-b (conflit!)
+git merge branch-b
+
+# 4. Resoudre le conflit
+# Editer conflict.txt, choisir ce que tu veux garder
+git add conflict.txt
+git commit -m "merge: resolve conflict"
+```
+
+---
+
+## Project - Mini-projet
+
+### Projet: Simuler un workflow d'equipe
+
+```bash
+# === SETUP ===
+mkdir team-project && cd team-project
+git init
+echo "# Team Project" > README.md
+git add README.md
+git commit -m "Initial commit"
+
+# === DEV 1: Feature Login ===
+git checkout -b feature/login
+cat > login.py << 'EOF'
+def login(username, password):
+    # TODO: implement
+    return True
+EOF
+git add login.py
+git commit -m "feat: add login stub"
+
+# Ameliorer le login
+cat > login.py << 'EOF'
+def login(username, password):
+    if username and password:
+        return authenticate(username, password)
+    return False
+EOF
+git add login.py
+git commit -m "feat: implement login logic"
+
+# === DEV 2: Feature Signup (en parallele) ===
+git checkout main
+git checkout -b feature/signup
+cat > signup.py << 'EOF'
+def signup(email, password):
+    # TODO: implement
+    return True
+EOF
+git add signup.py
+git commit -m "feat: add signup stub"
+
+# === INTEGRATION ===
+git checkout main
+
+# Merger login
+git merge feature/login -m "merge: feature/login"
+
+# Merger signup
+git merge feature/signup -m "merge: feature/signup"
+
+# Tag release
+git tag -a v1.0.0 -m "First release with login and signup"
+
+# Voir l'historique
+git log --oneline --graph --all
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                          GIT                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  SETUP                                                       │
+│  ─────                                                       │
+│  git init                   # nouveau repo                  │
+│  git clone url              # cloner                        │
+│  git config --global user.name/email                        │
+│                                                              │
+│  WORKFLOW                                                    │
+│  ────────                                                    │
+│  git status                 # voir l'etat                   │
+│  git add .                  # stager tout                   │
+│  git commit -m "msg"        # committer                     │
+│  git push origin main       # pousser                       │
+│  git pull                   # recuperer                     │
+│                                                              │
+│  BRANCHES                                                    │
+│  ────────                                                    │
+│  git branch                 # lister                        │
+│  git checkout -b name       # creer et switch               │
+│  git switch name            # changer                       │
+│  git merge name             # fusionner                     │
+│  git branch -d name         # supprimer                     │
+│                                                              │
+│  HISTORIQUE                                                  │
+│  ──────────                                                  │
+│  git log --oneline          # compact                       │
+│  git log --graph            # avec branches                 │
+│  git diff                   # voir modifs                   │
+│  git show commit            # details commit                │
+│                                                              │
+│  ANNULER                                                     │
+│  ──────                                                      │
+│  git restore file           # annuler modifs                │
+│  git restore --staged file  # unstage                       │
+│  git reset --soft HEAD~1    # annuler commit (garde fichiers)│
+│  git reset --hard HEAD~1    # annuler commit (perd tout)    │
+│  git revert HEAD            # commit inverse                │
+│                                                              │
+│  STASH                                                       │
+│  ─────                                                       │
+│  git stash                  # mettre de cote                │
+│  git stash pop              # recuperer                     │
+│  git stash list             # lister                        │
+│                                                              │
+│  REMOTE                                                      │
+│  ──────                                                      │
+│  git remote -v              # voir remotes                  │
+│  git fetch                  # recuperer sans merge          │
+│  git pull --rebase          # pull propre                   │
+│  git push -u origin main    # push avec upstream            │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **Difference entre merge et rebase?**
+   → Merge cree un commit de fusion, garde l'historique complet. Rebase reecrit l'historique pour un historique lineaire plus propre.
+
+2. **C'est quoi git stash?**
+   → Sauvegarde temporaire des modifications non committees. Utile pour changer de branche sans committer du travail en cours.
+
+3. **Comment annuler le dernier commit?**
+   → `git reset --soft HEAD~1` garde les fichiers, `git reset --hard HEAD~1` supprime tout.
+
+4. **Difference entre fetch et pull?**
+   → Fetch recupere les changements sans les appliquer. Pull = fetch + merge.
+
+5. **C'est quoi un conflit et comment le resoudre?**
+   → Quand deux branches modifient la meme partie d'un fichier. On edite le fichier, on choisit quoi garder, puis `git add` et `git commit`.
+
+6. **Comment voir les modifications d'un fichier?**
+   → `git diff fichier` pour les modifs non stagees, `git log -p fichier` pour l'historique complet.
+
+---
+
+## Sujets lies
+
+- **Avant:** [Linux Basics](/devops/linux-basics) - Commandes de base
+- **Apres:** [GitHub Actions](/devops/github-actions) - CI/CD avec Git
+- **Apres:** [Build Tools](/devops/build-tools) - Construire tes projets
+
+---
+
+*Temps estime: 40 min lecture + 35 min pratique*

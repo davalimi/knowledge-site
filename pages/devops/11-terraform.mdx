@@ -1,0 +1,811 @@
+# Terraform - Infrastructure as Code
+
+`[INTERMEDIAIRE]` - Temps: 55 min lecture + 40 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Creer une infra en cliquant dans la console AWS c'est:
+- Non reproductible
+- Non versionne
+- Source d'erreurs
+- Impossible a auditer
+
+Infrastructure as Code (IaC) c'est traiter ton infra comme du code:
+- Versionne dans Git
+- Review par l'equipe
+- Reproductible
+- Documentee automatiquement
+
+Terraform est l'outil IaC le plus populaire, multi-cloud.
+
+---
+
+## What - C'est quoi
+
+### Analogie: Les plans d'architecte
+
+Pour construire une maison, tu as des plans. Ces plans decrivent l'etat desire. L'entrepreneur (Terraform) compare les plans avec l'etat actuel et fait les travaux necessaires.
+
+### Terraform vs autres outils
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    COMPARAISON IaC                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  TERRAFORM                                                   │
+│  ─────────                                                   │
+│  - Multi-cloud (AWS, GCP, Azure, etc)                       │
+│  - Declaratif                                               │
+│  - State file                                               │
+│  - Le plus populaire                                        │
+│                                                              │
+│  CloudFormation (AWS)                                        │
+│  ────────────────────                                        │
+│  - AWS seulement                                            │
+│  - YAML/JSON                                                │
+│  - State gere par AWS                                       │
+│                                                              │
+│  Pulumi                                                      │
+│  ──────                                                      │
+│  - Multi-cloud                                              │
+│  - Langages de prog (Python, TypeScript)                    │
+│  - Alternative moderne                                      │
+│                                                              │
+│  Ansible                                                     │
+│  ───────                                                     │
+│  - Configuration management (pas IaC pur)                   │
+│  - Procedural                                               │
+│  - Idempotent                                               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Concepts cles
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CONCEPTS TERRAFORM                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  PROVIDER                                                    │
+│  ────────                                                    │
+│  - Plugin pour interagir avec un cloud/service             │
+│  - Ex: aws, google, azurerm, kubernetes                     │
+│                                                              │
+│  RESOURCE                                                    │
+│  ────────                                                    │
+│  - Un element d'infra (EC2, S3, VPC...)                     │
+│  - Declare l'etat desire                                    │
+│                                                              │
+│  DATA SOURCE                                                 │
+│  ───────────                                                 │
+│  - Lit des infos existantes (pas de creation)              │
+│  - Ex: AMI ID, infos d'un VPC existant                      │
+│                                                              │
+│  STATE                                                       │
+│  ─────                                                       │
+│  - Fichier qui mappe config → infra reelle                  │
+│  - terraform.tfstate                                        │
+│  - A stocker de facon securisee (S3, Terraform Cloud)       │
+│                                                              │
+│  MODULE                                                      │
+│  ──────                                                      │
+│  - Code Terraform reutilisable                              │
+│  - Comme une fonction                                       │
+│                                                              │
+│  VARIABLE                                                    │
+│  ────────                                                    │
+│  - Parametre d'entree                                       │
+│  - Rend le code flexible                                    │
+│                                                              │
+│  OUTPUT                                                      │
+│  ──────                                                      │
+│  - Valeur de sortie                                         │
+│  - Pour afficher ou passer a un autre module                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Workflow Terraform
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    WORKFLOW                                  │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. WRITE                                                    │
+│     Ecrire le code .tf                                      │
+│     ↓                                                        │
+│  2. INIT                                                     │
+│     terraform init                                          │
+│     Telecharge les providers                                │
+│     ↓                                                        │
+│  3. PLAN                                                     │
+│     terraform plan                                          │
+│     Compare etat desire vs actuel                           │
+│     Montre ce qui va changer                                │
+│     ↓                                                        │
+│  4. APPLY                                                    │
+│     terraform apply                                         │
+│     Execute les changements                                 │
+│     ↓                                                        │
+│  5. DESTROY (optionnel)                                      │
+│     terraform destroy                                       │
+│     Supprime tout                                           │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Installation
+
+```bash
+# macOS
+brew install terraform
+
+# Linux
+wget https://releases.hashicorp.com/terraform/1.6.0/terraform_1.6.0_linux_amd64.zip
+unzip terraform_1.6.0_linux_amd64.zip
+sudo mv terraform /usr/local/bin/
+
+# Verifier
+terraform version
+```
+
+### Premier projet
+
+```hcl
+# main.tf
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+  required_version = ">= 1.0"
+}
+
+provider "aws" {
+  region = "eu-west-1"
+}
+
+resource "aws_instance" "web" {
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
+
+  tags = {
+    Name = "HelloTerraform"
+  }
+}
+```
+
+```bash
+# Initialiser
+terraform init
+
+# Voir le plan
+terraform plan
+
+# Appliquer
+terraform apply
+
+# Verifier
+terraform show
+
+# Supprimer
+terraform destroy
+```
+
+### Variables
+
+```hcl
+# variables.tf
+variable "instance_type" {
+  description = "Type d'instance EC2"
+  type        = string
+  default     = "t2.micro"
+}
+
+variable "environment" {
+  description = "Environnement"
+  type        = string
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "Environment must be dev, staging, or prod."
+  }
+}
+
+variable "allowed_ports" {
+  description = "Ports autorises"
+  type        = list(number)
+  default     = [22, 80, 443]
+}
+
+variable "tags" {
+  description = "Tags communs"
+  type        = map(string)
+  default = {
+    Project = "MyApp"
+    Owner   = "DevOps"
+  }
+}
+
+# main.tf
+resource "aws_instance" "web" {
+  ami           = data.aws_ami.amazon_linux.id
+  instance_type = var.instance_type
+
+  tags = merge(var.tags, {
+    Name        = "web-server"
+    Environment = var.environment
+  })
+}
+```
+
+```bash
+# Passer des variables
+terraform apply -var="environment=dev"
+terraform apply -var-file="prod.tfvars"
+
+# terraform.tfvars (charge automatiquement)
+instance_type = "t3.medium"
+environment   = "prod"
+```
+
+### Outputs
+
+```hcl
+# outputs.tf
+output "instance_ip" {
+  description = "IP publique de l'instance"
+  value       = aws_instance.web.public_ip
+}
+
+output "instance_id" {
+  description = "ID de l'instance"
+  value       = aws_instance.web.id
+}
+
+output "instance_url" {
+  description = "URL de l'application"
+  value       = "http://${aws_instance.web.public_ip}"
+}
+```
+
+```bash
+terraform output
+terraform output instance_ip
+```
+
+### Data Sources
+
+```hcl
+# Trouver la derniere AMI Amazon Linux
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+}
+
+# Utiliser l'AMI
+resource "aws_instance" "web" {
+  ami           = data.aws_ami.amazon_linux.id
+  instance_type = "t2.micro"
+}
+
+# VPC par defaut
+data "aws_vpc" "default" {
+  default = true
+}
+
+# Subnets du VPC
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+```
+
+### Ressources AWS completes
+
+```hcl
+# vpc.tf
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "main-vpc"
+  }
+}
+
+resource "aws_subnet" "public" {
+  count             = 2
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(aws_vpc.main.cidr_block, 8, count.index)
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "public-${count.index + 1}"
+  }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = 2
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+# security_group.tf
+resource "aws_security_group" "web" {
+  name        = "web-sg"
+  description = "Security group for web servers"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/8"]  # SSH seulement interne
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# ec2.tf
+resource "aws_instance" "web" {
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.public[0].id
+  vpc_security_group_ids = [aws_security_group.web.id]
+  key_name               = var.key_name
+
+  user_data = <<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y httpd
+    systemctl start httpd
+    systemctl enable httpd
+    echo "<h1>Hello Terraform!</h1>" > /var/www/html/index.html
+  EOF
+
+  tags = {
+    Name = "web-server"
+  }
+}
+```
+
+### State Remote (S3)
+
+```hcl
+# backend.tf
+terraform {
+  backend "s3" {
+    bucket         = "my-terraform-state-bucket"
+    key            = "prod/terraform.tfstate"
+    region         = "eu-west-1"
+    encrypt        = true
+    dynamodb_table = "terraform-locks"  # Pour le locking
+  }
+}
+
+# Creer le bucket et la table DynamoDB d'abord (manuellement ou autre config)
+```
+
+### Modules
+
+```hcl
+# Structure
+modules/
+└── ec2-instance/
+    ├── main.tf
+    ├── variables.tf
+    └── outputs.tf
+
+# modules/ec2-instance/main.tf
+resource "aws_instance" "this" {
+  ami           = var.ami_id
+  instance_type = var.instance_type
+  subnet_id     = var.subnet_id
+
+  tags = var.tags
+}
+
+# modules/ec2-instance/variables.tf
+variable "ami_id" {
+  type = string
+}
+
+variable "instance_type" {
+  type    = string
+  default = "t2.micro"
+}
+
+variable "subnet_id" {
+  type = string
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+
+# modules/ec2-instance/outputs.tf
+output "instance_id" {
+  value = aws_instance.this.id
+}
+
+output "public_ip" {
+  value = aws_instance.this.public_ip
+}
+
+# Utilisation - main.tf
+module "web_server" {
+  source = "./modules/ec2-instance"
+
+  ami_id        = data.aws_ami.amazon_linux.id
+  instance_type = "t3.medium"
+  subnet_id     = aws_subnet.public[0].id
+
+  tags = {
+    Name        = "web-server"
+    Environment = var.environment
+  }
+}
+
+output "web_ip" {
+  value = module.web_server.public_ip
+}
+```
+
+### Expressions et fonctions
+
+```hcl
+# Conditionnels
+resource "aws_instance" "web" {
+  instance_type = var.environment == "prod" ? "t3.large" : "t3.micro"
+}
+
+# Count
+resource "aws_instance" "web" {
+  count = var.instance_count
+
+  ami           = data.aws_ami.amazon_linux.id
+  instance_type = "t2.micro"
+
+  tags = {
+    Name = "web-${count.index + 1}"
+  }
+}
+
+# for_each
+resource "aws_instance" "web" {
+  for_each = toset(["web-1", "web-2", "web-3"])
+
+  ami           = data.aws_ami.amazon_linux.id
+  instance_type = "t2.micro"
+
+  tags = {
+    Name = each.key
+  }
+}
+
+# Fonctions utiles
+locals {
+  # Concatenation
+  full_name = "${var.project}-${var.environment}"
+
+  # Merge maps
+  all_tags = merge(var.common_tags, var.extra_tags)
+
+  # Format
+  bucket_name = lower("${var.project}-${random_id.bucket.hex}")
+
+  # Lookup
+  instance_type = lookup(var.instance_types, var.environment, "t2.micro")
+
+  # File
+  user_data = file("${path.module}/scripts/setup.sh")
+
+  # Templatefile
+  user_data_rendered = templatefile("${path.module}/templates/setup.tpl", {
+    app_name = var.app_name
+    port     = var.port
+  })
+}
+```
+
+### Lifecycle
+
+```hcl
+resource "aws_instance" "web" {
+  # ...
+
+  lifecycle {
+    # Ne pas detruire avant de creer le nouveau
+    create_before_destroy = true
+
+    # Ignorer certains changements
+    ignore_changes = [
+      tags["LastUpdated"],
+      user_data,
+    ]
+
+    # Empecher la destruction
+    prevent_destroy = true  # Pour les ressources critiques
+  }
+}
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Premier Terraform
+
+```bash
+mkdir terraform-demo && cd terraform-demo
+
+cat > main.tf << 'EOF'
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "eu-west-1"
+}
+
+resource "aws_s3_bucket" "demo" {
+  bucket = "my-terraform-demo-${random_id.bucket.hex}"
+}
+
+resource "random_id" "bucket" {
+  byte_length = 4
+}
+
+output "bucket_name" {
+  value = aws_s3_bucket.demo.bucket
+}
+EOF
+
+terraform init
+terraform plan
+terraform apply
+terraform destroy
+```
+
+### Exercice 2: EC2 avec variables
+
+```bash
+cat > variables.tf << 'EOF'
+variable "instance_type" {
+  default = "t2.micro"
+}
+
+variable "environment" {
+  default = "dev"
+}
+EOF
+
+cat > main.tf << 'EOF'
+terraform {
+  required_providers {
+    aws = { source = "hashicorp/aws" }
+  }
+}
+
+provider "aws" {
+  region = "eu-west-1"
+}
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+}
+
+resource "aws_instance" "web" {
+  ami           = data.aws_ami.amazon_linux.id
+  instance_type = var.instance_type
+
+  tags = {
+    Name        = "demo-instance"
+    Environment = var.environment
+  }
+}
+
+output "public_ip" {
+  value = aws_instance.web.public_ip
+}
+EOF
+
+terraform init
+terraform apply -var="environment=staging"
+terraform destroy
+```
+
+### Exercice 3: Module
+
+```bash
+# Creer la structure
+mkdir -p modules/s3-bucket
+
+cat > modules/s3-bucket/main.tf << 'EOF'
+resource "aws_s3_bucket" "this" {
+  bucket = var.bucket_name
+  tags   = var.tags
+}
+
+resource "aws_s3_bucket_versioning" "this" {
+  bucket = aws_s3_bucket.this.id
+  versioning_configuration {
+    status = var.versioning ? "Enabled" : "Disabled"
+  }
+}
+EOF
+
+cat > modules/s3-bucket/variables.tf << 'EOF'
+variable "bucket_name" { type = string }
+variable "versioning" { default = false }
+variable "tags" { default = {} }
+EOF
+
+cat > modules/s3-bucket/outputs.tf << 'EOF'
+output "bucket_arn" { value = aws_s3_bucket.this.arn }
+output "bucket_name" { value = aws_s3_bucket.this.bucket }
+EOF
+
+# Utiliser le module
+cat > main.tf << 'EOF'
+module "logs_bucket" {
+  source      = "./modules/s3-bucket"
+  bucket_name = "my-logs-${random_id.suffix.hex}"
+  versioning  = true
+  tags        = { Purpose = "logs" }
+}
+
+resource "random_id" "suffix" {
+  byte_length = 4
+}
+
+output "bucket" {
+  value = module.logs_bucket.bucket_name
+}
+EOF
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       TERRAFORM                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  COMMANDS                                                    │
+│  ────────                                                    │
+│  terraform init            # Initialiser                    │
+│  terraform plan            # Preview                        │
+│  terraform apply           # Appliquer                      │
+│  terraform destroy         # Supprimer                      │
+│  terraform fmt             # Formatter                      │
+│  terraform validate        # Valider                        │
+│  terraform output          # Voir outputs                   │
+│  terraform state list      # Lister le state                │
+│                                                              │
+│  FILES                                                       │
+│  ─────                                                       │
+│  main.tf           # Resources principales                  │
+│  variables.tf      # Declaration des variables              │
+│  outputs.tf        # Valeurs de sortie                      │
+│  terraform.tfvars  # Valeurs des variables                  │
+│  backend.tf        # Config du state remote                 │
+│                                                              │
+│  SYNTAX                                                      │
+│  ──────                                                      │
+│  resource "type" "name" { ... }                             │
+│  data "type" "name" { ... }                                 │
+│  variable "name" { type, default, description }             │
+│  output "name" { value = ... }                              │
+│  module "name" { source = "..." }                           │
+│                                                              │
+│  REFERENCES                                                  │
+│  ──────────                                                  │
+│  var.name                  # Variable                       │
+│  local.name                # Local                          │
+│  aws_instance.web.id       # Resource attribute             │
+│  data.aws_ami.ubuntu.id    # Data source                    │
+│  module.vpc.vpc_id         # Module output                  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi Terraform?**
+   → Outil IaC declaratif. Tu decris l'etat desire, Terraform fait les changements necessaires. Multi-cloud.
+
+2. **C'est quoi le state Terraform?**
+   → Fichier qui mappe la config au monde reel. Permet a Terraform de savoir ce qui existe. A stocker de facon securisee (S3).
+
+3. **Difference entre count et for_each?**
+   → count: pour creer N ressources identiques. for_each: pour creer des ressources a partir d'une map/set, plus flexible.
+
+4. **C'est quoi un module Terraform?**
+   → Code reutilisable, comme une fonction. Encapsule des ressources, parametrable via variables.
+
+5. **Comment gerer les secrets?**
+   → Variables sensibles (sensitive = true), tfvars ignores par Git, ou integrer avec Vault.
+
+6. **Workflow Git pour Terraform?**
+   → PR avec terraform plan en commentaire, review par l'equipe, apply automatique apres merge.
+
+---
+
+## Sujets lies
+
+- **Avant:** [AWS](/devops/aws) - Services a provisionner
+- **Avant:** [EKS](/devops/eks) - Cluster K8s avec Terraform
+- **Apres:** [Ansible](/devops/ansible) - Configuration management
+- **Lie:** CI/CD - Terraform dans les pipelines
+
+---
+
+*Temps estime: 55 min lecture + 40 min pratique*

@@ -1,0 +1,591 @@
+# EKS - Kubernetes sur AWS
+
+`[INTERMEDIAIRE]` - Temps: 45 min lecture + 35 min pratique
+
+---
+
+## Why - Pourquoi c'est important
+
+Gerer un cluster Kubernetes c'est complexe:
+- Installer et maintenir le control plane
+- Patcher les nodes
+- Gerer les certificats
+- Haute disponibilite du master
+
+EKS (Elastic Kubernetes Service) c'est Kubernetes manage par AWS. Tu te concentres sur tes applications, AWS gere l'infrastructure.
+
+---
+
+## What - C'est quoi
+
+### Analogie: Location vs Achat
+
+Kubernetes self-managed c'est comme acheter une maison: tu geres tout.
+EKS c'est comme louer: le proprietaire (AWS) gere les gros travaux, toi tu vis dedans.
+
+### Architecture EKS
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ARCHITECTURE EKS                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌───────────────── GERE PAR AWS ─────────────────┐         │
+│  │                                                  │         │
+│  │   CONTROL PLANE (Multi-AZ)                      │         │
+│  │   ┌──────────────────────────────────────┐     │         │
+│  │   │  API Server  │  etcd  │  Scheduler   │     │         │
+│  │   └──────────────────────────────────────┘     │         │
+│  │                                                  │         │
+│  └──────────────────────────────────────────────────┘        │
+│                          │                                    │
+│  ────────────────────────────────────────────────────────    │
+│                          │                                    │
+│  ┌───────────────── GERE PAR TOI ─────────────────┐         │
+│  │                                                  │         │
+│  │   WORKER NODES                                   │         │
+│  │   ┌─────────────┐  ┌─────────────┐             │         │
+│  │   │  EC2 Node   │  │  EC2 Node   │             │         │
+│  │   │  ┌───────┐  │  │  ┌───────┐  │             │         │
+│  │   │  │ Pods  │  │  │  │ Pods  │  │             │         │
+│  │   │  └───────┘  │  │  └───────┘  │             │         │
+│  │   └─────────────┘  └─────────────┘             │         │
+│  │                                                  │         │
+│  │   OU: Fargate (serverless, aussi gere par AWS) │         │
+│  │                                                  │         │
+│  └──────────────────────────────────────────────────┘        │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Options de nodes
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TYPES DE NODES                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  MANAGED NODE GROUPS                                         │
+│  ───────────────────                                         │
+│  - EC2 instances gerees par AWS                             │
+│  - Auto-scaling, auto-patching                              │
+│  - Tu choisis le type d'instance                            │
+│  - Le plus courant                                          │
+│                                                              │
+│  SELF-MANAGED NODES                                          │
+│  ──────────────────                                          │
+│  - Tu geres les EC2 toi-meme                                │
+│  - Plus de controle                                         │
+│  - Plus de travail                                          │
+│                                                              │
+│  FARGATE                                                     │
+│  ───────                                                     │
+│  - Serverless, pas de nodes a gerer                         │
+│  - Paiement par pod (vCPU + RAM)                            │
+│  - Pas de SSH sur les nodes                                 │
+│  - Ideal pour workloads variables                           │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How - En pratique
+
+### Prerequis
+
+```bash
+# AWS CLI configure
+aws configure
+
+# eksctl (outil officiel pour EKS)
+# macOS
+brew tap weaveworks/tap
+brew install weaveworks/tap/eksctl
+
+# Linux
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin
+
+# kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/$(uname -s | tr '[:upper:]' '[:lower:]')/amd64/kubectl"
+sudo install kubectl /usr/local/bin/
+
+# Verifier
+eksctl version
+kubectl version --client
+```
+
+### Creer un cluster avec eksctl
+
+```bash
+# Cluster basique
+eksctl create cluster \
+  --name my-cluster \
+  --region eu-west-1 \
+  --nodegroup-name my-nodes \
+  --node-type t3.medium \
+  --nodes 2 \
+  --nodes-min 1 \
+  --nodes-max 4
+
+# Avec plus d'options
+eksctl create cluster \
+  --name prod-cluster \
+  --region eu-west-1 \
+  --version 1.28 \
+  --nodegroup-name workers \
+  --node-type t3.large \
+  --nodes 3 \
+  --nodes-min 2 \
+  --nodes-max 10 \
+  --managed \
+  --with-oidc \
+  --ssh-access \
+  --ssh-public-key my-key
+
+# Verifier
+eksctl get cluster
+kubectl get nodes
+```
+
+### Cluster avec fichier de config
+
+```yaml
+# cluster.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: my-cluster
+  region: eu-west-1
+  version: "1.28"
+
+vpc:
+  cidr: 10.0.0.0/16
+  nat:
+    gateway: Single  # HighlyAvailable pour prod
+
+managedNodeGroups:
+  - name: workers
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 5
+    volumeSize: 50
+    ssh:
+      allow: true
+      publicKeyName: my-key
+    labels:
+      role: worker
+    tags:
+      Environment: production
+    iam:
+      withAddonPolicies:
+        ebs: true
+        efs: true
+        albIngress: true
+        cloudWatch: true
+
+  - name: spot-workers
+    instanceTypes: ["t3.medium", "t3.large"]
+    spot: true
+    desiredCapacity: 2
+    minSize: 0
+    maxSize: 10
+
+# Fargate profile (optionnel)
+fargateProfiles:
+  - name: fp-default
+    selectors:
+      - namespace: serverless
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["api", "audit", "authenticator"]
+
+iam:
+  withOIDC: true
+```
+
+```bash
+eksctl create cluster -f cluster.yaml
+```
+
+### Se connecter au cluster
+
+```bash
+# Configurer kubectl
+aws eks update-kubeconfig --name my-cluster --region eu-west-1
+
+# Verifier
+kubectl config current-context
+kubectl get nodes
+kubectl get pods -A
+```
+
+### IAM pour EKS
+
+```bash
+# Creer un role IAM pour les pods (IRSA)
+eksctl create iamserviceaccount \
+  --name s3-reader \
+  --namespace default \
+  --cluster my-cluster \
+  --attach-policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess \
+  --approve
+
+# Utiliser dans un pod
+# spec:
+#   serviceAccountName: s3-reader
+```
+
+### AWS Load Balancer Controller
+
+```bash
+# Installer le controller (pour Ingress ALB)
+eksctl utils associate-iam-oidc-provider --cluster my-cluster --approve
+
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName=my-cluster \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller
+```
+
+```yaml
+# Ingress avec ALB
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: my-service
+            port:
+              number: 80
+```
+
+### EBS CSI Driver (stockage)
+
+```bash
+# Installer le driver EBS
+eksctl create addon \
+  --name aws-ebs-csi-driver \
+  --cluster my-cluster \
+  --service-account-role-arn arn:aws:iam::ACCOUNT:role/AmazonEKS_EBS_CSI_DriverRole \
+  --force
+```
+
+```yaml
+# StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-sc
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  type: gp3
+  fsType: ext4
+---
+# PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ebs-sc
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+### Scaling
+
+```bash
+# Cluster Autoscaler
+eksctl create iamserviceaccount \
+  --name cluster-autoscaler \
+  --namespace kube-system \
+  --cluster my-cluster \
+  --attach-policy-arn arn:aws:iam::ACCOUNT:policy/ClusterAutoscalerPolicy \
+  --approve
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/autoscaler/master/cluster-autoscaler/cloudprovider/aws/examples/cluster-autoscaler-autodiscover.yaml
+
+# Modifier pour ton cluster
+kubectl -n kube-system edit deployment cluster-autoscaler
+# Ajouter: --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/my-cluster
+
+# HPA (Horizontal Pod Autoscaler)
+kubectl autoscale deployment my-app --cpu-percent=50 --min=2 --max=10
+```
+
+### Deployer une application
+
+```yaml
+# app.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+spec:
+  type: LoadBalancer  # Cree un NLB/CLB
+  selector:
+    app: web
+  ports:
+  - port: 80
+    targetPort: 80
+```
+
+```bash
+kubectl apply -f app.yaml
+kubectl get svc web-service  # Attendre l'EXTERNAL-IP
+```
+
+### CI/CD avec EKS
+
+```yaml
+# Jenkinsfile ou GitHub Actions
+# 1. Build l'image
+# 2. Push vers ECR
+# 3. Update le deployment
+
+# Dans le pipeline:
+- name: Deploy to EKS
+  run: |
+    aws eks update-kubeconfig --name my-cluster --region eu-west-1
+    kubectl set image deployment/web-app web=ACCOUNT.dkr.ecr.REGION.amazonaws.com/myapp:$TAG
+    kubectl rollout status deployment/web-app
+```
+
+### Monitoring
+
+```bash
+# Container Insights
+eksctl utils update-cluster-logging \
+  --enable-types all \
+  --cluster my-cluster \
+  --approve
+
+# Prometheus + Grafana
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install prometheus prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
+
+# Acceder a Grafana
+kubectl port-forward svc/prometheus-grafana 3000:80 -n monitoring
+# admin / prom-operator
+```
+
+### Supprimer le cluster
+
+```bash
+# Attention: supprime tout!
+eksctl delete cluster --name my-cluster
+
+# Ou
+eksctl delete cluster -f cluster.yaml
+```
+
+---
+
+## Practice - Exercices
+
+### Exercice 1: Premier cluster EKS
+
+```bash
+# 1. Creer un cluster simple
+eksctl create cluster \
+  --name demo-cluster \
+  --region eu-west-1 \
+  --nodes 2
+
+# 2. Deployer nginx
+kubectl create deployment nginx --image=nginx:alpine
+kubectl expose deployment nginx --port=80 --type=LoadBalancer
+
+# 3. Attendre et tester
+kubectl get svc nginx -w
+curl http://EXTERNAL-IP
+
+# 4. Nettoyer
+kubectl delete svc nginx
+kubectl delete deployment nginx
+eksctl delete cluster --name demo-cluster
+```
+
+### Exercice 2: Application complete
+
+```bash
+# 1. Creer un namespace
+kubectl create namespace demo
+
+# 2. Deployer une app avec ConfigMap
+cat <<EOF | kubectl apply -n demo -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  MESSAGE: "Hello from EKS!"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello
+  template:
+    metadata:
+      labels:
+        app: hello
+    spec:
+      containers:
+      - name: app
+        image: hashicorp/http-echo
+        args: ["-text=Hello EKS!"]
+        ports:
+        - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello
+spec:
+  type: LoadBalancer
+  selector:
+    app: hello
+  ports:
+  - port: 80
+    targetPort: 5678
+EOF
+
+# 3. Tester
+kubectl get svc hello -n demo -w
+```
+
+---
+
+## Cheatsheet
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                          EKS                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  CLUSTER                                                     │
+│  ───────                                                     │
+│  eksctl create cluster --name X --nodes 2                   │
+│  eksctl get cluster                                         │
+│  eksctl delete cluster --name X                             │
+│                                                              │
+│  KUBECONFIG                                                  │
+│  ──────────                                                  │
+│  aws eks update-kubeconfig --name X --region Y              │
+│  kubectl config current-context                             │
+│                                                              │
+│  NODE GROUPS                                                 │
+│  ───────────                                                 │
+│  eksctl create nodegroup --cluster X --name Y               │
+│  eksctl scale nodegroup --cluster X --name Y -N 5           │
+│  eksctl delete nodegroup --cluster X --name Y               │
+│                                                              │
+│  IAM                                                         │
+│  ───                                                         │
+│  eksctl create iamserviceaccount --name X ...               │
+│  eksctl utils associate-iam-oidc-provider --cluster X       │
+│                                                              │
+│  ADDONS                                                      │
+│  ──────                                                      │
+│  eksctl create addon --name X --cluster Y                   │
+│  eksctl get addon --cluster Y                               │
+│                                                              │
+│  NODE TYPES                                                  │
+│  ──────────                                                  │
+│  Managed Node Groups: EC2 gere par AWS                      │
+│  Self-managed: EC2 gere par toi                             │
+│  Fargate: Serverless, pas de nodes                          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Interview Qs - Questions classiques
+
+1. **C'est quoi EKS?**
+   → Kubernetes manage par AWS. Control plane gere par AWS, tu geres les workers.
+
+2. **Difference entre Managed Node Groups et Fargate?**
+   → Managed: EC2 instances, plus de controle, SSH possible. Fargate: serverless, paiement par pod, zero maintenance.
+
+3. **Comment securiser EKS?**
+   → IAM roles for pods (IRSA), network policies, private cluster, security groups, encryption.
+
+4. **C'est quoi IRSA?**
+   → IAM Roles for Service Accounts. Permet aux pods d'avoir des permissions AWS specifiques sans credentials.
+
+5. **Comment exposer une app sur EKS?**
+   → Service LoadBalancer (NLB/CLB), Ingress avec ALB Controller, ou NodePort + externe.
+
+6. **Pricing EKS?**
+   → $0.10/heure pour le control plane + cout des nodes EC2 (ou Fargate par pod).
+
+---
+
+## Sujets lies
+
+- **Avant:** [Kubernetes](/devops/kubernetes) - Les bases K8s
+- **Avant:** [AWS](/devops/aws) - Services AWS
+- **Apres:** [Terraform](/devops/terraform) - Infra as Code pour EKS
+- **Lie:** [Helm](/devops/helm) - Deployer des apps sur EKS
+
+---
+
+*Temps estime: 45 min lecture + 35 min pratique*
